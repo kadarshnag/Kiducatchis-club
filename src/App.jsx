@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Disc3, Menu, X, Instagram, Mail, LogIn, LogOut, LayoutDashboard, UserRound, Shield, ChevronRight } from 'lucide-react';
 import { sb, configured, isCore, errorText } from './lib.js';
 import { Home, About, Squad, Council, Stories, Gallery, Contact, Tournaments, MatchPage, Login, Join, ProfilePage } from './Public.jsx';
@@ -21,6 +21,245 @@ export function SectionHeader({ eyebrow, title, copy, action }) { return <div cl
 export function Empty({ title = 'Nothing here yet', text = 'Check back for an update.', icon: Icon = Disc3 }) { return <div className="empty"><Icon size={33} /><h3>{title}</h3><p>{text}</p></div> }
 export function Flash({ error, success }) { return <>{error && <div className="flash error" role="alert">{errorText(error)}</div>}{success && <div className="flash success" role="status">{success}</div>}</> }
 export function Modal({ title, children, onClose }) { useEffect(() => { const key = e => { if (e.key === 'Escape') onClose() }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key) }, [onClose]); return <div className="modal-shade" onMouseDown={e => e.target === e.currentTarget && onClose()} role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-label={title}><div className="modal-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose} aria-label="Close"><X size={20} /></button></div>{children}</section></div> }
-export function Protected({ children, core = false, admin = false }) { const { loading, user, profile } = useAuth(); if (loading) return <div className="wrap padded"><Empty title="Checking access..." /></div>; if (!user) return <Navigate to="/login" replace />; if (!profile) return <div className="wrap padded"><Empty title="No member profile found" text="Your club administrator needs to activate your profile." /></div>; if (!profile.is_active) return <div className="wrap padded"><Empty title="Your access is inactive" text="Please contact the council." /></div>; if ((core && !isCore(profile)) || (admin && profile.role !== 'admin')) return <Navigate to="/dashboard" replace />; return children; }
-function AppShell() { const { pathname } = useLocation(); useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }) }, [pathname]); return <><Loader /><Header />{!configured && <div className="config-banner">Preview mode: connect Supabase using the .env file to enable members, live games and uploads.</div>}<main><Routes><Route path="/" element={<Home />} /><Route path="/about" element={<About />} /><Route path="/squad" element={<Squad />} /><Route path="/council" element={<Council />} /><Route path="/stories" element={<Stories />} /><Route path="/gallery" element={<Gallery />} /><Route path="/contact" element={<Contact />} /><Route path="/tournaments" element={<Tournaments />} /><Route path="/games/:id" element={<MatchPage />} /><Route path="/login" element={<Login />} /><Route path="/join" element={<Join />} /><Route path="/dashboard/*" element={<Protected><Dashboard /></Protected>} /><Route path="/profile/:id" element={<ProfilePage />} /><Route path="*" element={<div className="wrap padded"><Empty title="Page not found" text="This disc went out of bounds." /><Link className="btn" to="/">Back home</Link></div>} /></Routes></main><Footer /></> }
+export function Protected({
+    children,
+    core = false,
+    admin = false
+}) {
+    const { loading, user, profile, logout } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="wrap padded">
+                <Empty title="Checking access..." />
+            </div>
+        );
+    }
+
+    if (!user) {
+        return <Navigate to="/login" replace />;
+    }
+
+    if (!profile) {
+        return (
+            <div className="wrap padded">
+                <Empty
+                    title="No member profile found"
+                    text="Ask the club administrator to invite your account email from Members & Squad. No approval or invitation code is required."
+                />
+
+                <button
+                    className="btn btn-primary"
+                    onClick={logout}
+                >
+                    SIGN OUT & TRY ANOTHER EMAIL
+                </button>
+            </div>
+        );
+    }
+
+    if (!profile.is_active) {
+        return (
+            <div className="wrap padded">
+                <Empty
+                    title="Your access is inactive"
+                    text="Please contact the council."
+                />
+            </div>
+        );
+    }
+
+    if (
+        (core && !isCore(profile)) ||
+        (admin && profile.role !== 'admin')
+    ) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
+    return children;
+}
+
+function Activate() {
+    const navigate = useNavigate();
+    const { user, loading, refresh } = useAuth();
+
+    const [password, setPassword] = useState('');
+    const [confirm, setConfirm] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    async function submit(e) {
+        e.preventDefault();
+        setError('');
+
+        if (password.length < 8) {
+            setError('Password must contain at least 8 characters.');
+            return;
+        }
+
+        if (password !== confirm) {
+            setError('Passwords do not match.');
+            return;
+        }
+
+        setBusy(true);
+
+        try {
+            const { data } = await sb.auth.getSession();
+
+            if (!data.session) {
+                throw new Error(
+                    'Invitation session not found. Open the latest email invitation again.'
+                );
+            }
+
+            const { error: updateError } =
+                await sb.auth.updateUser({ password });
+
+            if (updateError) throw updateError;
+
+            await refresh();
+
+            navigate('/dashboard', { replace: true });
+        } catch (err) {
+            setError(errorText(err));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <section className="auth-screen">
+            <div className="auth-panel">
+                <img
+                    src="/assets/logo-purple.png"
+                    alt="Kiducatchis"
+                />
+
+                <span className="eyebrow">
+          // MEMBER ACTIVATION
+                </span>
+
+                <h1>
+                    SET YOUR <em>PASSWORD.</em>
+                </h1>
+
+                <p>
+                    {loading
+                        ? 'Verifying invitation...'
+                        : user
+                            ? 'Your invitation is verified. Set a password to access the club.'
+                            : 'Open the invitation link from your email to activate your membership.'}
+                </p>
+
+                <form className="form-stack" onSubmit={submit}>
+                    <label>
+                        New password
+                        <input
+                            type="password"
+                            minLength={8}
+                            required
+                            autoComplete="new-password"
+                            value={password}
+                            onChange={e =>
+                                setPassword(e.target.value)
+                            }
+                        />
+                    </label>
+
+                    <label>
+                        Confirm password
+                        <input
+                            type="password"
+                            minLength={8}
+                            required
+                            autoComplete="new-password"
+                            value={confirm}
+                            onChange={e =>
+                                setConfirm(e.target.value)
+                            }
+                        />
+                    </label>
+
+                    <Flash error={error} />
+
+                    <button
+                        className="btn btn-primary"
+                        disabled={busy || loading || !user}
+                    >
+                        {busy
+                            ? 'ACTIVATING...'
+                            : 'ACTIVATE MEMBERSHIP'}
+
+                        <ChevronRight size={16} />
+                    </button>
+                </form>
+
+                <p className="auth-foot">
+                    Already activated?{' '}
+                    <Link to="/login">Member login</Link>
+                </p>
+            </div>
+        </section>
+    );
+}
+
+function AppShell() {
+    const { pathname } = useLocation();
+
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' })
+    }, [pathname]);
+
+    return <>
+        <Loader />
+        <Header />
+
+        {!configured && <div className="config-banner">
+            Preview mode: connect Supabase using the .env file to enable members, live games and uploads.
+        </div>}
+
+        <main>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/squad" element={<Squad />} />
+                <Route path="/council" element={<Council />} />
+                <Route path="/stories" element={<Stories />} />
+                <Route path="/gallery" element={<Gallery />} />
+                <Route path="/contact" element={<Contact />} />
+                <Route path="/tournaments" element={<Tournaments />} />
+                <Route path="/games/:id" element={<MatchPage />} />
+                <Route path="/login" element={<Login />} />
+                <Route
+                    path="/join"
+                    element={<Navigate to="/login" replace />}
+                />
+
+                <Route
+                    path="/activate"
+                    element={<Activate />}
+                />
+                <Route path="/activate" element={<Activate />} />
+
+                <Route path="/dashboard/*" element={<Protected><Dashboard /></Protected>} />
+
+                <Route path="/profile/:id" element={<ProfilePage />} />
+
+                <Route path="*" element={
+                    <div className="wrap padded">
+                        <Empty
+                            title="Page not found"
+                            text="This disc went out of bounds."
+                        />
+                        <Link className="btn" to="/">Back home</Link>
+                    </div>
+                } />
+            </Routes>
+        </main>
+
+        <Footer />
+    </>
+}
+
 export default function App() { return <AuthProvider><AppShell /></AuthProvider> }

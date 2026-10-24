@@ -31,5 +31,487 @@ function Whiteboard() {
 function TournamentAdmin({ core }) { const { data: tourneys, reload: reloadT } = useData('tournaments', { order: 'starts_on', asc: false }), { data: profiles } = useData('profiles', { order: 'full_name' }), { data: roster, reload: reloadR } = useData('tournament_roster', { limit: 2000 }), { data: matches, reload: reloadM } = useData('matches', { order: 'scheduled_at', limit: 300 }); const [form, setForm] = useState({ name: '', description: '', location: '', starts_on: '', ends_on: '' }), [selected, setSelected] = useState([]), [tourId, setTourId] = useState(''), [match, setMatch] = useState({ opponent: '', venue: '', scheduled_at: '' }), [addPlayer, setAddPlayer] = useState(''), [edits, setEdits] = useState({}), task = useAsync(); useEffect(() => { if (tourneys.length && !tourneys.some(t => t.id === tourId)) setTourId(tourneys[0].id) }, [tourneys, tourId]); const pMap = Object.fromEntries(profiles.map(p => [p.id, p])); const current = roster.filter(r => r.tournament_id === tourId); async function create(e) { e.preventDefault(); const did = await task.run(async () => { const t = await save('tournaments', { ...form, ends_on: form.ends_on || null }); if (selected.length) { const items = selected.map(id => ({ tournament_id: t.id, player_id: id, position: pMap[id]?.position || 'Flexible', jersey_number: pMap[id]?.jersey_number ?? null, team_role: 'Player' })); const { error } = await sb.from('tournament_roster').insert(items); if (error) throw error; } reloadT(); reloadR(); setTourId(t.id) }, 'Tournament and selected roster created'); if (did) { setForm({ name: '', description: '', location: '', starts_on: '', ends_on: '' }); setSelected([]) } } async function createMatch(e) { e.preventDefault(); const did = await task.run(async () => { if (!tourId) throw Error('Create or select a tournament first.'); await save('matches', { tournament_id: tourId, opponent: match.opponent, venue: match.venue, scheduled_at: new Date(match.scheduled_at).toISOString() }); reloadM() }, 'Match scheduled'); if (did) setMatch({ opponent: '', venue: '', scheduled_at: '' }) } async function addToRoster() { await task.run(async () => { if (!addPlayer) throw Error('Select a player.'); const p = pMap[addPlayer]; await save('tournament_roster', { tournament_id: tourId, player_id: addPlayer, position: p.position, jersey_number: p.jersey_number, team_role: 'Player' }); reloadR(); setAddPlayer('') }, 'Player added') } async function updateRoster(r) { const values = edits[r.id] || r; await task.run(async () => { await patch('tournament_roster', r.id, { position: values.position, team_role: values.team_role, jersey_number: values.jersey_number === '' ? null : values.jersey_number }); reloadR() }, 'Squad role updated') } async function removeRoster(r) { if (!confirm('Remove player from this tournament squad?')) return; await task.run(async () => { const { error } = await sb.from('tournament_roster').delete().eq('id', r.id); if (error) throw error; reloadR() }, 'Player removed') } async function editTournament(t, value) { await task.run(async () => { await patch('tournaments', t.id, value); reloadT() }, 'Tournament updated') } return <><Heading eyebrow="// SCHEDULE & SELECTION" title="TOURNAMENT MANAGEMENT" subtitle="Build the competition, select your squad, assign captains, then create individual matches." />{!core && <Panel title="Select tournament"><select value={tourId} onChange={e => setTourId(e.target.value)}><option value="">Select...</option>{tourneys.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Panel>}{core && <div className="dash-two unequal"><Panel title="Create a tournament"><form className="form-stack" onSubmit={create}><Input label="Tournament name" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /><Input label="Location" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} /><div className="form-grid"><Input label="Starts on" type="date" required value={form.starts_on} onChange={e => setForm({ ...form, starts_on: e.target.value })} /><Input label="Ends on" type="date" min={form.starts_on} value={form.ends_on} onChange={e => setForm({ ...form, ends_on: e.target.value })} /></div><Input label="Description"><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} /></Input><label className="field">Choose squad now (optional)</label><div className="roster-picker">{profiles.filter(p => p.is_active).map(p => <label key={p.id}><input type="checkbox" checked={selected.includes(p.id)} onChange={e => setSelected(a => e.target.checked ? [...a, p.id] : a.filter(id => id !== p.id))} />{p.full_name} <small>#{p.jersey_number ?? '—'} · {p.position}</small></label>)}</div><Flash error={task.err} success={task.ok} /><FormButton busy={task.busy}>CREATE TOURNAMENT</FormButton></form></Panel><Panel title="Manage competition" subtitle="Select tournament to edit squad and fixtures"><Input label="Selected tournament"><select value={tourId} onChange={e => setTourId(e.target.value)}><option value="">Select...</option>{tourneys.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Input>{tourId && <><div className="admin-tournament-toolbar"><span>{tourneys.find(t => t.id === tourId)?.name}</span><select value={tourneys.find(t => t.id === tourId)?.status || 'upcoming'} onChange={e => editTournament(tourneys.find(t => t.id === tourId), { status: e.target.value })}><option>upcoming</option><option>ongoing</option><option>completed</option></select></div><form className="form-stack" onSubmit={createMatch}><h4>SCHEDULE A MATCH</h4><Input label="Opponent name" required value={match.opponent} onChange={e => setMatch({ ...match, opponent: e.target.value })} /><Input label="Venue" value={match.venue} onChange={e => setMatch({ ...match, venue: e.target.value })} /><Input label="Date and time" type="datetime-local" required value={match.scheduled_at} onChange={e => setMatch({ ...match, scheduled_at: e.target.value })} /><FormButton busy={task.busy}>ADD MATCH</FormButton></form></>}{!tourneys.length && <Empty title="Create a tournament first" />}</Panel></div>}<Panel title="Squad selection" subtitle="Tournament-specific positions, jersey numbers and leadership roles">{tourId ? <>{core && <div className="squad-edit-top"><select value={addPlayer} onChange={e => setAddPlayer(e.target.value)}><option value="">Select additional player</option>{profiles.filter(p => p.is_active && !current.some(r => r.player_id === p.id)).map(p => <option value={p.id} key={p.id}>{p.full_name}</option>)}</select><button className="small-btn" onClick={addToRoster} disabled={!addPlayer}><Plus size={15} /> ADD PLAYER</button></div>}{current.length ? <div className="roster-edit-list">{current.map(r => { const v = edits[r.id] || r; const field = (key, value) => setEdits({ ...edits, [r.id]: { ...v, [key]: value } }); return <div key={r.id} className="roster-edit-row"><b>{pMap[r.player_id]?.full_name || 'Unknown'}</b><input aria-label="Jersey" disabled={!core} type="number" min="0" max="999" placeholder="#" value={v.jersey_number ?? ''} onChange={e => field('jersey_number', e.target.value)} /><select disabled={!core} aria-label="Position" value={v.position} onChange={e => field('position', e.target.value)}>{['Handler', 'Cutter', 'Flexible'].map(p => <option key={p}>{p}</option>)}</select><select disabled={!core} aria-label="Tournament responsibility" value={v.team_role} onChange={e => field('team_role', e.target.value)}>{['Player', 'Captain', 'Spirit Captain', 'Coach', 'Vice Captain', 'Manager'].map(p => <option key={p}>{p}</option>)}</select>{core && <button title="Save player role" onClick={() => updateRoster(r)}><Check size={18} /></button>}{core && <button title="Remove player" onClick={() => removeRoster(r)}><X size={18} /></button>}</div> })}</div> : <Empty title="No squad selected" text="Add players to set their tournament roles." />}</> : <Empty title="Choose a tournament" />}</Panel><Panel title="Scheduled matches">{matches.filter(m => !tourId || m.tournament_id === tourId).length ? <div className="management-list">{matches.filter(m => !tourId || m.tournament_id === tourId).map(m => <Link to={`/games/${m.id}`} className="dash-list-row" key={m.id}><div><b>Kiducatchis vs {m.opponent}</b><small>{date(m.scheduled_at)} · {m.status} · {m.score_us}:{m.score_them}</small></div><ArrowUpRight size={17} /></Link>)}</div> : <Empty title="No matches added" />}</Panel></> }
 function Scoring() { const { user } = useAuth(), { data: matches, reload: reloadM } = useData('matches', { order: 'scheduled_at', limit: 300 }, true), { data: tournaments } = useData('tournaments'), { data: roster } = useData('tournament_roster', { limit: 2000 }), { data: profiles } = useData('profiles'), { data: events, reload: reloadE } = useData('match_events', { order: 'game_second', limit: 1000 }, true); const [selected, setSelected] = useState(''), [form, setForm] = useState({ kind: 'point_us', player_id: '', assist_id: '', detail: '' }), [now, setNow] = useState(Date.now()), task = useAsync(); useEffect(() => { if (!selected && matches.length) setSelected(matches.find(m => m.status === 'live')?.id || matches[0].id) }, [selected, matches]); useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, []); const m = matches.find(x => x.id === selected), team = roster.filter(r => r.tournament_id === m?.tournament_id), pMap = Object.fromEntries(profiles.map(p => [p.id, p])), elapsed = m ? m.elapsed_before_pause + (m.clock_running && m.clock_started_at ? Math.max(0, Math.floor((now - new Date(m.clock_started_at).getTime()) / 1000)) : 0) : 0; const history = events.filter(e => e.match_id === m?.id); async function clockAction(action) { if (!m) return; await task.run(async () => { const changes = action === 'start' ? { status: 'live', clock_running: true, clock_started_at: new Date().toISOString() } : action === 'pause' ? { clock_running: false, clock_started_at: null, elapsed_before_pause: elapsed } : { status: 'completed', clock_running: false, clock_started_at: null, elapsed_before_pause: elapsed }; await patch('matches', m.id, changes); reloadM() }, action === 'start' ? 'Match is live' : action === 'pause' ? 'Timer paused' : 'Match completed') } async function enterEvent(e) { e.preventDefault(); if (!m || m.status !== 'live') return; await task.run(async () => { await save('match_events', { match_id: m.id, kind: form.kind, player_id: form.player_id || null, assist_id: form.kind === 'point_us' && form.assist_id ? form.assist_id : null, detail: form.detail, game_second: elapsed, created_by: user.id }); reloadE(); reloadM(); setForm({ ...form, detail: '' }) }, 'Event recorded') } async function undo(e) { if (!confirm('Remove this event and recalculate the score?')) return; await task.run(async () => { const { error } = await sb.from('match_events').delete().eq('id', e.id); if (error) throw error; reloadE(); reloadM() }, 'Event removed') } async function pin() { await task.run(async () => { await patch('matches', m.id, { pinned: !m.pinned }); reloadM() }, 'Homepage pin changed') } const label = { point_us: 'Point scored', point_them: 'Opponent point', block: 'Block', turnover: 'Turnover', on: 'Player on', off: 'Player off', other: 'Other' }; return <><Heading eyebrow="// SCORE IT LIVE" title="MATCH CONTROL" subtitle="Live scores feed the public homepage and match page. Every event has a game-clock timestamp." /><Panel title="Choose a game"><Input label="Tournament / game"><select value={selected} onChange={e => setSelected(e.target.value)}><option value="">Choose game</option>{matches.map(x => <option key={x.id} value={x.id}>{tournaments.find(t => t.id === x.tournament_id)?.name || 'Tournament'} — vs {x.opponent} ({x.status})</option>)}</select></Input>{!matches.length && <p className="muted">Create a tournament and a match first.</p>}</Panel>{m && <><div className="score-console"><div className="score-console-top"><span className={'status ' + (m.status === 'live' ? 'live' : '')}>{m.status.toUpperCase()}</span><button className="small-btn" onClick={pin}>{m.pinned ? '★ PINNED' : '☆ PIN ON HOMEPAGE'}</button></div><div className="score-console-main"><div><small>OUR CLUB</small><b>KIDUCATCHIS</b></div><strong>{m.score_us} <em>:</em> {m.score_them}</strong><div><small>OPPONENT</small><b>{m.opponent}</b></div></div><div className="timer-line"><Clock size={18} /><strong>{fmtClock(elapsed)}</strong><span>GAME CLOCK</span></div><div className="actions center">{m.status !== 'completed' && (m.clock_running ? <button className="btn btn-outline" onClick={() => clockAction('pause')}><Pause size={16} /> PAUSE CLOCK</button> : <button className="btn btn-primary" onClick={() => clockAction('start')}><Play size={16} /> {m.status === 'upcoming' ? 'START MATCH' : 'RESUME MATCH'}</button>)}{m.status === 'live' && <button className="btn btn-danger" onClick={() => { if (confirm('End this game and publish the final score?')) clockAction('end') }}><Square size={16} /> END GAME</button>}</div></div><div className="dash-two"><Panel title="Record a game event" subtitle="Scorer, assister and defensive events are saved with time"><form className="form-stack" onSubmit={enterEvent}><Input label="Action"><select value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value, assist_id: '' })}>{Object.entries(label).map(([k, v]) => <option value={k} key={k}>{v}</option>)}</select></Input><Input label="Player / scorer"><select value={form.player_id} required={form.kind === 'point_us'} onChange={e => setForm({ ...form, player_id: e.target.value })}><option value="">{form.kind === 'point_them' ? 'Opponent point (no player)' : 'Select player...'}</option>{team.map(r => <option key={r.player_id} value={r.player_id}>#{r.jersey_number ?? '?'} {pMap[r.player_id]?.full_name}</option>)}</select></Input>{form.kind === 'point_us' && <Input label="Assisted by (optional)"><select value={form.assist_id} onChange={e => setForm({ ...form, assist_id: e.target.value })}><option value="">No assist</option>{team.filter(r => r.player_id !== form.player_id).map(r => <option key={r.player_id} value={r.player_id}>{pMap[r.player_id]?.full_name}</option>)}</select></Input>}<Input label="Note (optional)" value={form.detail} placeholder="Layout D / break throw..." onChange={e => setForm({ ...form, detail: e.target.value })} /><Flash error={task.err} success={task.ok} /><button className="btn btn-primary" type="submit" disabled={task.busy || m.status !== 'live' || !team.length}><Plus size={17} /> RECORD AT {fmtClock(elapsed)}</button>{!team.length && <p className="small-note">Set the tournament squad before recording players or points.</p>}</form></Panel><Panel title="Event timeline" subtitle="Latest events · remove wrong entries to update the score">{history.length ? <div className="events-list">{history.map(e => <div className="event-row" key={e.id}><time>{fmtClock(e.game_second)}</time><div><b>{label[e.kind]}</b><p>{pMap[e.player_id]?.full_name || ''}{e.assist_id ? ` · Assist: ${pMap[e.assist_id]?.full_name || ''}` : ''} {e.detail}</p></div><button title="Undo this event" onClick={() => undo(e)}><Trash2 size={16} /></button></div>)}</div> : <Empty title="No events recorded yet" />}</Panel></div></>}</> }
 function Finance() { const { user, profile } = useAuth(), { data: rows, reload } = useData('finance_transactions', { order: 'occurred_on', limit: 1500 }), { data: members } = useData('profiles', { order: 'full_name' }), task = useAsync(), [proof, setProof] = useState(null), [form, setForm] = useState({ kind: 'expense', scope: 'club', reason: '', amount: '', holder_id: '', transferred_to_id: '', player_id: '', occurred_on: new Date().toISOString().slice(0, 10) }), [period, setPeriod] = useState('all'); const core = members.filter(x => ['admin', 'council'].includes(x.role) && x.is_active), name = id => members.find(m => m.id === id)?.full_name || 'Unknown'; const filtered = rows.filter(r => period === 'all' || r.occurred_on.startsWith(period)); const total = kind => filtered.filter(r => r.kind === kind).reduce((n, r) => n + Number(r.amount), 0); const income = total('income'), expense = total('expense'), totalBalance = income - expense; const balances = core.map(p => { const amount = filtered.reduce((n, r) => { if (r.kind === 'income' && r.holder_id === p.id) return n + Number(r.amount); if (r.kind === 'expense' && r.holder_id === p.id) return n - Number(r.amount); if (r.kind === 'transfer') { if (r.holder_id === p.id) n -= Number(r.amount); if (r.transferred_to_id === p.id) n += Number(r.amount) } return n }, 0); return { ...p, amount } }); const months = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (5 - i)); return d.toISOString().slice(0, 7) }); const series = months.map(m => ({ month: m, income: rows.filter(r => r.kind === 'income' && r.occurred_on.startsWith(m)).reduce((n, r) => n + Number(r.amount), 0), expense: rows.filter(r => r.kind === 'expense' && r.occurred_on.startsWith(m)).reduce((n, r) => n + Number(r.amount), 0) })); const max = Math.max(1, ...series.map(x => Math.max(x.income, x.expense))); const periods = [...new Set(rows.map(x => x.occurred_on.slice(0, 7)))].sort().reverse(); async function submit(e) { e.preventDefault(); const done = await task.run(async () => { if (form.kind === 'transfer' && !form.transferred_to_id) throw Error('Select which council member receives this transfer.'); if (form.kind === 'transfer' && form.transferred_to_id === form.holder_id) throw Error('Choose two different holders.'); if (form.scope === 'player' && !form.player_id) throw Error('Select a player.'); const path = proof ? await upload('finance-proofs', proof, user, 20) : null; await save('finance_transactions', { kind: form.kind, scope: form.kind === 'transfer' ? 'club' : form.scope, reason: form.reason, amount: Number(form.amount), holder_id: form.holder_id, transferred_to_id: form.kind === 'transfer' ? form.transferred_to_id : form.kind === 'expense' ? (form.transferred_to_id || null) : null, player_id: form.kind !== 'transfer' && form.scope === 'player' ? form.player_id : null, occurred_on: form.occurred_on, proof_path: path, created_by: user.id }); reload() }, 'Transaction recorded'); if (done) { setForm({ ...form, reason: '', amount: '', transferred_to_id: '', player_id: '' }); setProof(null); e.target.reset() } } async function remove(r) { if (!confirm('Permanently delete this transaction?')) return; await task.run(async () => { const { error } = await sb.from('finance_transactions').delete().eq('id', r.id); if (error) throw error; reload() }, 'Transaction deleted') } async function viewProof(path) { const w = window.open('about:blank', '_blank'); try { const url = await signedUrl('finance-proofs', path); if (w) w.location.href = url; else window.location.href = url } catch (e) { if (w) w.close(); alert(errorText(e)) } } function exportCSV() { const cols = ['occurred_on', 'kind', 'amount', 'scope', 'player_id', 'holder_id', 'transferred_to_id', 'reason', 'created_by']; const escaped = v => '"' + String(v ?? '').replaceAll('"', '""') + '"'; const csv = [cols.join(','), ...filtered.map(r => cols.map(c => escaped(r[c])).join(','))].join('\n'); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }), url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = 'kiducatchis-accounts.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 3000) } return <><Heading eyebrow="// CLUB TREASURY" title="FINANCE DASHBOARD" subtitle="Private cashflow, member holdings, expenses, internal transfers and optional proof receipts." /><div className="finance-header"><select aria-label="Month filter" value={period} onChange={e => setPeriod(e.target.value)}><option value="all">All time</option>{periods.map(p => <option value={p} key={p}>{p}</option>)}</select><button className="small-btn" onClick={exportCSV}><Download size={16} /> EXPORT CSV</button></div><div className="dash-stats"><div><ArrowDownRight /><span>TOTAL INCOME</span><strong>{money(income)}</strong></div><div><CreditCard /><span>TOTAL EXPENSES</span><strong>{money(expense)}</strong></div><div><Wallet /><span>NET CASH BALANCE</span><strong>{money(totalBalance)}</strong></div><div><Activity /><span>INTERNAL TRANSFERS</span><strong>{money(total('transfer'))}</strong></div></div><div className="dash-two"><Panel title="Income vs expenditure" subtitle="Monthly recorded transactions"><div className="finance-chart">{series.map(s => <div className="bar-group" key={s.month}><div className="bar-pair"><span title={`Income ${money(s.income)}`} style={{ height: `${Math.max(1, s.income / max * 100)}%` }} /><span title={`Expense ${money(s.expense)}`} style={{ height: `${Math.max(1, s.expense / max * 100)}%` }} /></div><small>{s.month.slice(5)}</small></div>)}</div><div className="chart-legend"><i /> Income <i /> Expense</div></Panel><Panel title="Held by core members" subtitle="Net balance with each treasurer; transfers move cash without affecting club profit"><div className="holder-list">{balances.map(p => <div key={p.id}><span><UserRound size={16} />{p.full_name}</span><b className={p.amount < 0 ? 'negative' : ''}>{money(p.amount)}</b></div>)}{!balances.length && <Empty title="No council accounts" text="Assign council roles to track individual cash holders." />}</div><p className="small-note">Negative amounts may indicate an incomplete opening balance or that a member paid out of pocket. Enter opening funds as income.</p></Panel></div><div className="dash-two unequal"><Panel title="Record transaction"><form className="form-stack" onSubmit={submit}><Input label="Transaction type"><select value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}><option value="income">Income / funds received</option><option value="expense">Expense / payment</option><option value="transfer">Internal transfer between core members</option></select></Input><div className="form-grid"><Input label="Amount (INR)" type="number" required min="0.01" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /><Input label="Date" required type="date" value={form.occurred_on} onChange={e => setForm({ ...form, occurred_on: e.target.value })} /></div>{form.kind !== 'transfer' && <Input label="Related to"><select value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value })}><option value="club">Club</option><option value="player">Specific player</option></select></Input>}{form.kind !== 'transfer' && form.scope === 'player' && <Input label="Player"><select required value={form.player_id} onChange={e => setForm({ ...form, player_id: e.target.value })}><option value="">Select player</option>{members.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></Input>}<Input label={form.kind === 'transfer' ? 'Transfer from which core member?' : form.kind === 'income' ? 'Received/held by' : 'Paid by / taken from'}><select required value={form.holder_id} onChange={e => setForm({ ...form, holder_id: e.target.value })}><option value="">Select council member</option>{core.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select></Input>{form.kind !== 'income' && <Input label={form.kind === 'transfer' ? 'Transferred to which core member?' : 'Transferred to core member (optional)'}><select required={form.kind === 'transfer'} value={form.transferred_to_id} onChange={e => setForm({ ...form, transferred_to_id: e.target.value })}><option value="">{form.kind === 'transfer' ? 'Select recipient' : 'None / external expense'}</option>{core.filter(p => p.id !== form.holder_id).map(p => <option value={p.id} key={p.id}>{p.full_name}</option>)}</select></Input>}<Input label="Reason / description" required maxLength={1500} value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} /><Input label="Proof (optional, JPEG / PNG / PDF up to 20 MB)"><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setProof(e.target.files[0])} /></Input><Flash error={task.err} success={task.ok} /><FormButton busy={task.busy}>RECORD TRANSACTION</FormButton></form></Panel><Panel title="Transaction ledger" subtitle="Income, payments and transfers, newest first"><div className="ledger-list">{filtered.map(r => <article key={r.id} className="ledger-row"><div className={'tx-icon ' + r.kind}>{r.kind === 'income' ? <ArrowDownRight /> : r.kind === 'expense' ? <CreditCard /> : <ArrowRight />}</div><div><b>{r.reason}</b><small>{date(r.occurred_on)} · {r.kind.toUpperCase()} · {r.scope === 'player' ? `PLAYER: ${name(r.player_id)}` : 'CLUB'}</small><small>{name(r.holder_id)} {r.transferred_to_id ? `→ ${name(r.transferred_to_id)}` : ''}</small><div className="actions">{r.proof_path && <button className="inline-button" onClick={() => viewProof(r.proof_path)}>VIEW PROOF <ArrowUpRight size={14} /></button>}{isAdmin(profile) && <button className="inline-button danger" onClick={() => remove(r)}>DELETE <Trash2 size={14} /></button>}</div></div><strong className={r.kind}>{r.kind === 'expense' ? '−' : r.kind === 'income' ? '+' : '⇄'}{money(r.amount)}</strong></article>)}{!filtered.length && <Empty title="No financial entries" text="Record the club's first payment or income." />}</div></Panel></div></> }
-function Members() { const { user } = useAuth(), { data: members, reload: reloadP } = useData('profiles', { order: 'full_name' }), { data: invites, reload: reloadI } = useData('invitations', { order: 'created_at', limit: 100 }), [invite, setInvite] = useState({ email: '', full_name: '', role: 'player' }), [token, setToken] = useState(''), [editing, setEditing] = useState(null), [form, setForm] = useState({}), task = useAsync(); function randomToken() { const x = crypto.getRandomValues(new Uint8Array(24)); return [...x].map(n => n.toString(16).padStart(2, '0')).join('') } async function createInvite(e) { e.preventDefault(); const newToken = randomToken(); const yes = await task.run(async () => { await save('invitations', { email: invite.email.toLowerCase().trim(), full_name: invite.full_name, role: invite.role, token: newToken, created_by: user.id }); reloadI(); setToken(newToken) }, 'Invitation generated. Share the email, code and /join link privately.'); if (yes) setInvite({ email: '', full_name: '', role: 'player' }) } function edit(m) { setEditing(m.id); setForm({ role: m.role, position: m.position, jersey_number: m.jersey_number ?? '', council_title: m.council_title ?? '', is_active: m.is_active }) } async function update() { await task.run(async () => { const { error } = await sb.rpc('admin_update_member', { p_id: editing, p_role: form.role, p_position: form.position, p_number: form.jersey_number === '' ? null : Number(form.jersey_number), p_title: form.council_title || null, p_active: form.is_active }); if (error) throw error; reloadP(); setEditing(null) }, 'Member details updated') } return <><Heading eyebrow="// WHO'S IN THE CLUB" title="MEMBER ADMINISTRATION" subtitle="Invite-only registration. Only administrators can approve users, change roles and deactivate accounts." /><div className="dash-two unequal"><Panel title="Issue an invitation" subtitle="Generate a single-use code valid for 14 days"><form className="form-stack" onSubmit={createInvite}><Input label="Member name" required value={invite.full_name} onChange={e => setInvite({ ...invite, full_name: e.target.value })} /><Input label="Invited email" required type="email" value={invite.email} onChange={e => setInvite({ ...invite, email: e.target.value })} /><Input label="Account role"><select value={invite.role} onChange={e => setInvite({ ...invite, role: e.target.value })}><option value="player">Player</option><option value="council">Council</option><option value="admin">Administrator</option></select></Input><Flash error={task.err} success={task.ok} /><FormButton busy={task.busy}>GENERATE INVITE</FormButton></form>{token && <div className="invite-output"><small>SINGLE-USE INVITATION CODE</small><code>{token}</code><div className="actions"><button className="small-btn" onClick={() => navigator.clipboard.writeText(token)}>COPY CODE</button><button className="small-btn" onClick={() => navigator.clipboard.writeText(`${location.origin}/join`)}>COPY JOIN LINK</button></div></div>}<div className="invite-list"><h4>Recent invitations</h4>{invites.map(i => <div key={i.id}><b>{i.email}</b><small>{i.role} · {i.used_at ? 'Used' : new Date(i.expires_at) < new Date() ? 'Expired' : 'Pending'} · expires {date(i.expires_at)}</small>{!i.used_at && <button onClick={() => navigator.clipboard.writeText(i.token)} title="Copy invite code">COPY</button>}</div>)}</div></Panel><Panel title="Club members" subtitle="Roles, preferred positions, jersey and activity status"><div className="management-list">{members.map(m => <div key={m.id} className="manage-item member-admin-row"><div className="mini-avatar">{m.avatar_path ? <img src={fileUrl('club-media', m.avatar_path)} alt="" /> : m.full_name.charAt(0)}</div><div><b>{m.full_name}</b><small>{m.role} · #{m.jersey_number ?? '—'} · {m.position} · {m.is_active ? 'Active' : 'Inactive'}</small></div><button className="small-btn" onClick={() => edit(m)}><PenTool size={14} /> EDIT</button></div>)}</div></Panel></div>{editing && <Modal title="Edit member" onClose={() => setEditing(null)}><div className="form-stack"><Input label="Club role"><select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}><option>player</option><option>council</option><option>admin</option></select></Input><Input label="Position"><select value={form.position} onChange={e => setForm({ ...form, position: e.target.value })}>{['Handler', 'Cutter', 'Flexible'].map(p => <option key={p}>{p}</option>)}</select></Input><Input label="Jersey number" type="number" min="0" max="999" value={form.jersey_number} onChange={e => setForm({ ...form, jersey_number: e.target.value })} /><Input label="Council title (optional)" placeholder="Treasurer, President, Coach..." value={form.council_title} onChange={e => setForm({ ...form, council_title: e.target.value })} /><label className="checkbox-field"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> Active member</label><Flash error={task.err} success={task.ok} /><button className="btn btn-primary" disabled={task.busy} onClick={update}>SAVE MEMBER CHANGES <Check size={16} /></button></div></Modal>}</> }
+
+function Members() {
+    const {
+        data: members,
+        reload: reloadP
+    } = useData('profiles', { order: 'full_name' });
+
+    const [form, setForm] = useState({
+        full_name: '',
+        email: '',
+        role: 'player',
+        position: 'Flexible',
+        jersey_number: ''
+    });
+
+    const [editing, setEditing] = useState(null);
+    const [editForm, setEditForm] = useState({});
+    const [guestEmail, setGuestEmail] = useState('');
+    const task = useAsync();
+
+    const getNumber = value =>
+        value === '' ? null : Number(value);
+
+    async function invokeInvite(body) {
+        const { data, error } = await sb.functions.invoke(
+            'invite-member',
+            { body }
+        );
+
+        if (error) {
+            let message = error.message;
+
+            try {
+                const details = await error.context?.json();
+                message = details?.error || message;
+            } catch { }
+
+            throw new Error(message);
+        }
+
+        if (!data?.ok) {
+            throw new Error(
+                data?.error || 'Invitation could not be delivered.'
+            );
+        }
+
+        return data;
+    }
+
+    async function add(e) {
+        e.preventDefault();
+
+        const hasEmail = Boolean(form.email.trim());
+
+        const successMessage = hasEmail
+            ? 'Member profile created and invitation sent.'
+            : 'Player added to the squad successfully.';
+
+        const success = await task.run(async () => {
+            if (form.full_name.trim().length < 2) {
+                throw new Error('Enter a valid player name.');
+            }
+
+            if (!hasEmail && form.role !== 'player') {
+                throw new Error(
+                    'Council members and admins require an email.'
+                );
+            }
+
+            if (hasEmail) {
+                await invokeInvite({
+                    full_name: form.full_name.trim(),
+                    email: form.email.trim(),
+                    role: form.role,
+                    position: form.position,
+                    jersey_number: getNumber(form.jersey_number)
+                });
+            } else {
+                const { error } = await sb.rpc(
+                    'admin_create_squad_player',
+                    {
+                        p_name: form.full_name.trim(),
+                        p_position: form.position,
+                        p_number: getNumber(form.jersey_number)
+                    }
+                );
+
+                if (error) throw error;
+            }
+
+            reloadP();
+        }, successMessage);
+
+        if (success) {
+            setForm({
+                full_name: '',
+                email: '',
+                role: 'player',
+                position: 'Flexible',
+                jersey_number: ''
+            });
+        }
+    }
+
+    function edit(member) {
+        setGuestEmail('');
+        setEditing(member.id);
+
+        setEditForm({
+            role: member.role,
+            position: member.position,
+            jersey_number: member.jersey_number ?? '',
+            council_title: member.council_title ?? '',
+            is_active: member.is_active
+        });
+    }
+
+    async function update() {
+        await task.run(async () => {
+            const { error } = await sb.rpc(
+                'admin_update_member',
+                {
+                    p_id: editing,
+                    p_role: editForm.role,
+                    p_position: editForm.position,
+                    p_number: getNumber(editForm.jersey_number),
+                    p_title: editForm.council_title || null,
+                    p_active: editForm.is_active
+                }
+            );
+
+            if (error) throw error;
+
+            reloadP();
+            setEditing(null);
+        }, 'Member details updated.');
+    }
+
+    async function enableLogin() {
+        await task.run(async () => {
+            const member = members.find(m => m.id === editing);
+
+            if (!member?.is_guest) {
+                throw new Error('Select a squad-only player.');
+            }
+
+            if (!guestEmail.trim()) {
+                throw new Error('Enter a valid email.');
+            }
+
+            await invokeInvite({
+                guest_profile_id: member.id,
+                full_name: member.full_name,
+                email: guestEmail.trim(),
+                role: 'player',
+                position: member.position,
+                jersey_number: member.jersey_number
+            });
+
+            reloadP();
+            setGuestEmail('');
+            setEditing(null);
+        }, 'Login invitation sent. Player history preserved.');
+    }
+
+    const selectedMember = members.find(
+        m => m.id === editing
+    );
+
+    return (
+        <>
+            <Heading
+                eyebrow="// CLUB MANAGEMENT"
+                title="MEMBERS & SQUAD"
+                subtitle="Manage players, club roles, jerseys and member access."
+            />
+
+            <div className="dash-two unequal">
+                <Panel
+                    title="Add squad member"
+                    subtitle="Add players directly or send an email invitation."
+                >
+                    <form className="form-stack" onSubmit={add}>
+                        <Input
+                            label="Full name"
+                            required
+                            maxLength={120}
+                            value={form.full_name}
+                            onChange={e =>
+                                setForm({
+                                    ...form,
+                                    full_name: e.target.value
+                                })
+                            }
+                        />
+
+                        <div className="form-grid">
+                            <Input label="Member role">
+                                <select
+                                    value={form.role}
+                                    onChange={e =>
+                                        setForm({
+                                            ...form,
+                                            role: e.target.value
+                                        })
+                                    }
+                                >
+                                    <option value="player">Player</option>
+                                    <option value="council">Council member</option>
+                                    <option value="admin">Administrator</option>
+                                </select>
+                            </Input>
+
+                            <Input label="Position">
+                                <select
+                                    value={form.position}
+                                    onChange={e =>
+                                        setForm({
+                                            ...form,
+                                            position: e.target.value
+                                        })
+                                    }
+                                >
+                                    <option value="Handler">Handler</option>
+                                    <option value="Cutter">Cutter</option>
+                                    <option value="Flexible">Flexible</option>
+                                </select>
+                            </Input>
+                        </div>
+
+                        <div className="form-grid">
+                            <Input
+                                label="Jersey number"
+                                type="number"
+                                min="0"
+                                max="999"
+                                value={form.jersey_number}
+                                onChange={e =>
+                                    setForm({
+                                        ...form,
+                                        jersey_number: e.target.value
+                                    })
+                                }
+                            />
+
+                            <Input
+                                label={
+                                    form.role === 'player'
+                                        ? 'Email (optional)'
+                                        : 'Email (required)'
+                                }
+                                type="email"
+                                required={form.role !== 'player'}
+                                placeholder="player@example.com"
+                                value={form.email}
+                                onChange={e =>
+                                    setForm({
+                                        ...form,
+                                        email: e.target.value
+                                    })
+                                }
+                            />
+                        </div>
+
+                        <p className="small-note">
+                            {form.email.trim()
+                                ? 'A login profile will be created and an invitation email sent automatically.'
+                                : form.role === 'player'
+                                    ? 'This player will appear in the squad and can participate in tournaments without a login.'
+                                    : 'Enter an email to create a council or administrator account.'}
+                        </p>
+
+                        <Flash error={task.err} success={task.ok} />
+
+                        <FormButton busy={task.busy}>
+                            {form.email.trim()
+                                ? 'CREATE PROFILE & SEND EMAIL'
+                                : 'ADD TO SQUAD'}
+                        </FormButton>
+                    </form>
+                </Panel>
+
+                <Panel
+                    title="Club members"
+                    subtitle="All registered and squad-only players."
+                >
+                    <div className="management-list">
+                        {members.map(member => (
+                            <div
+                                key={member.id}
+                                className="manage-item member-admin-row"
+                            >
+                                <div className="mini-avatar">
+                                    {member.avatar_path ? (
+                                        <img
+                                            src={fileUrl(
+                                                'club-media',
+                                                member.avatar_path
+                                            )}
+                                            alt=""
+                                        />
+                                    ) : (
+                                        (member.full_name || 'P').charAt(0)
+                                    )}
+                                </div>
+
+                                <div>
+                                    <b>{member.full_name}</b>
+
+                                    <small>
+                                        {member.role}
+                                        {' · #'}
+                                        {member.jersey_number ?? '—'}
+                                        {' · '}
+                                        {member.position}
+                                        {' · '}
+                                        {member.is_active ? 'Active' : 'Inactive'}
+                                        {' · '}
+                                        {member.is_guest
+                                            ? 'No login'
+                                            : 'Login account'}
+                                    </small>
+                                </div>
+
+                                <button
+                                    className="small-btn"
+                                    onClick={() => edit(member)}
+                                >
+                                    <PenTool size={14} />
+                                    EDIT
+                                </button>
+                            </div>
+                        ))}
+
+                        {!members.length && (
+                            <Empty
+                                title="No members found"
+                                text="Add your first player using the form."
+                            />
+                        )}
+                    </div>
+                </Panel>
+            </div>
+
+            {editing && (
+                <Modal
+                    title="Edit member"
+                    onClose={() => setEditing(null)}
+                >
+                    <div className="form-stack">
+                        <Input label="Club role">
+                            <select
+                                value={editForm.role}
+                                onChange={e =>
+                                    setEditForm({
+                                        ...editForm,
+                                        role: e.target.value
+                                    })
+                                }
+                            >
+                                {['player', 'council', 'admin'].map(role => (
+                                    <option
+                                        key={role}
+                                        value={role}
+                                        disabled={
+                                            selectedMember?.is_guest &&
+                                            role !== 'player'
+                                        }
+                                    >
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+                        </Input>
+
+                        <Input label="Position">
+                            <select
+                                value={editForm.position}
+                                onChange={e =>
+                                    setEditForm({
+                                        ...editForm,
+                                        position: e.target.value
+                                    })
+                                }
+                            >
+                                {['Handler', 'Cutter', 'Flexible'].map(
+                                    position => (
+                                        <option key={position} value={position}>
+                                            {position}
+                                        </option>
+                                    )
+                                )}
+                            </select>
+                        </Input>
+
+                        <Input
+                            label="Jersey number"
+                            type="number"
+                            min="0"
+                            max="999"
+                            value={editForm.jersey_number}
+                            onChange={e =>
+                                setEditForm({
+                                    ...editForm,
+                                    jersey_number: e.target.value
+                                })
+                            }
+                        />
+
+                        <Input
+                            label="Council title"
+                            placeholder="Captain, Treasurer, President..."
+                            value={editForm.council_title}
+                            onChange={e =>
+                                setEditForm({
+                                    ...editForm,
+                                    council_title: e.target.value
+                                })
+                            }
+                        />
+
+                        <label className="checkbox-field">
+                            <input
+                                type="checkbox"
+                                checked={editForm.is_active}
+                                onChange={e =>
+                                    setEditForm({
+                                        ...editForm,
+                                        is_active: e.target.checked
+                                    })
+                                }
+                            />
+                            Active member
+                        </label>
+
+                        {selectedMember?.is_guest && (
+                            <div className="guest-upgrade">
+                                <h4>Enable player login</h4>
+
+                                <p className="small-note">
+                                    Send an invitation to this player without
+                                    losing tournament history or match statistics.
+                                </p>
+
+                                <Input
+                                    label="Player email"
+                                    type="email"
+                                    placeholder="player@example.com"
+                                    value={guestEmail}
+                                    onChange={e =>
+                                        setGuestEmail(e.target.value)
+                                    }
+                                />
+
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={task.busy || !guestEmail.trim()}
+                                    onClick={enableLogin}
+                                >
+                                    SEND LOGIN INVITATION
+                                    <UserPlus size={16} />
+                                </button>
+                            </div>
+                        )}
+
+                        <Flash error={task.err} success={task.ok} />
+
+                        <button
+                            className="btn btn-primary"
+                            disabled={task.busy}
+                            onClick={update}
+                        >
+                            SAVE MEMBER CHANGES
+                            <Check size={16} />
+                        </button>
+                    </div>
+                </Modal>
+            )}
+        </>
+    );
+}
+
 function Messages() { const { data: rows, reload } = useData('contact_messages', { order: 'created_at', limit: 250 }), task = useAsync(), { profile } = useAuth(); async function remove(id) { if (!confirm('Delete this message?')) return; await task.run(async () => { const { error } = await sb.from('contact_messages').delete().eq('id', id); if (error) throw error; reload() }, 'Message deleted') } return <><Heading eyebrow="// FROM THE COMMUNITY" title="CONTACT INBOX" subtitle="Messages submitted using the public club website." /><Panel title="Inbox"><Flash error={task.err} success={task.ok} />{rows.length ? <div className="message-list">{rows.map(r => <article key={r.id}><div><h3>{r.name}</h3><span>{date(r.created_at)} · <a href={`mailto:${r.email}`}>{r.email}</a></span></div><p>{r.message}</p>{isAdmin(profile) && <button className="inline-button danger" onClick={() => remove(r.id)}>DELETE <Trash2 size={14} /></button>}</article>)}</div> : <Empty title="Inbox is empty" text="Messages sent via Contact Us appear here." />}</Panel></> }
