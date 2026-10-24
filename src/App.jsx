@@ -81,12 +81,128 @@ export function Protected({
 
 function Activate() {
     const navigate = useNavigate();
-    const { user, loading, refresh } = useAuth();
+    const { user, refresh } = useAuth();
 
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
     const [busy, setBusy] = useState(false);
+    const [verifying, setVerifying] = useState(true);
     const [error, setError] = useState('');
+    const [activeUser, setActiveUser] = useState(null);
+
+    useEffect(() => {
+        let mounted = true;
+
+        async function verifyInvitation() {
+            setError('');
+            setVerifying(true);
+
+            try {
+                if (!sb) {
+                    throw new Error('Supabase is not configured.');
+                }
+
+                // Check for error parameters in hash or search (e.g. from expired or rejected token)
+                const rawHash = window.location.hash.replace(/^#/, '');
+                const hashParams = new URLSearchParams(rawHash);
+                const searchParams = new URLSearchParams(window.location.search);
+
+                const errCode = hashParams.get('error_code') || searchParams.get('error_code');
+                const errDesc = hashParams.get('error_description') || searchParams.get('error_description') || hashParams.get('error') || searchParams.get('error');
+
+                if (errCode || errDesc) {
+                    const cleanDesc = errDesc ? decodeURIComponent(errDesc.replace(/\+/g, ' ')) : '';
+                    throw new Error(cleanDesc || 'This invitation link is invalid or has expired (403). Please ask your club administrator to send a new invite.');
+                }
+
+                // Check for access_token in hash (Implicit flow / invite link redirect)
+                const accessToken = hashParams.get('access_token');
+                const refreshToken = hashParams.get('refresh_token');
+
+                if (accessToken) {
+                    const { data: sessionData, error: sessionErr } = await sb.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken || '',
+                    });
+
+                    if (sessionErr) throw sessionErr;
+
+                    // Clean tokens from URL address bar without page reload
+                    window.history.replaceState(null, '', window.location.pathname);
+
+                    if (mounted) {
+                        setActiveUser(sessionData.user);
+                        await refresh();
+                    }
+                    return;
+                }
+
+                // Check for code in query (PKCE flow)
+                const code = searchParams.get('code');
+                if (code) {
+                    const { data: sessionData, error: exchangeErr } = await sb.auth.exchangeCodeForSession(code);
+                    if (exchangeErr) throw exchangeErr;
+
+                    window.history.replaceState(null, '', window.location.pathname);
+
+                    if (mounted) {
+                        setActiveUser(sessionData.user);
+                        await refresh();
+                    }
+                    return;
+                }
+
+                // Check for token_hash in query (Direct OTP link)
+                const tokenHash = searchParams.get('token_hash');
+                const type = searchParams.get('type') || 'invite';
+                if (tokenHash) {
+                    const { data: sessionData, error: otpErr } = await sb.auth.verifyOtp({ token_hash: tokenHash, type });
+                    if (otpErr) throw otpErr;
+
+                    window.history.replaceState(null, '', window.location.pathname);
+
+                    if (mounted) {
+                        setActiveUser(sessionData.user);
+                        await refresh();
+                    }
+                    return;
+                }
+
+                // If no tokens in URL, check if there is an active session
+                const { data: currentSession } = await sb.auth.getSession();
+                if (currentSession?.session?.user) {
+                    // Validate session token with getUser to ensure it is not a stale/expired 403 JWT
+                    const { data: userData, error: userErr } = await sb.auth.getUser();
+                    if (userErr) {
+                        await sb.auth.signOut();
+                        throw new Error('Your previous session has expired. Please open the activation link from your email again.');
+                    }
+                    if (mounted) {
+                        setActiveUser(userData.user);
+                    }
+                } else {
+                    if (mounted) {
+                        setActiveUser(null);
+                    }
+                }
+            } catch (err) {
+                if (mounted) {
+                    setError(errorText(err));
+                    setActiveUser(null);
+                }
+            } finally {
+                if (mounted) {
+                    setVerifying(false);
+                }
+            }
+        }
+
+        verifyInvitation();
+
+        return () => {
+            mounted = false;
+        };
+    }, [refresh]);
 
     async function submit(e) {
         e.preventDefault();
@@ -105,15 +221,15 @@ function Activate() {
         setBusy(true);
 
         try {
-            const { data } = await sb.auth.getSession();
+            const { data: sessionData } = await sb.auth.getSession();
 
-            if (!data.session) {
+            if (!sessionData?.session) {
                 throw new Error(
-                    'Invitation session not found. Open the latest email invitation again.'
+                    'No active session found. Please open the latest invitation link from your email.'
                 );
             }
 
-            const { error: updateError } =
+            const { data: updated, error: updateError } =
                 await sb.auth.updateUser({ password });
 
             if (updateError) throw updateError;
@@ -128,72 +244,82 @@ function Activate() {
         }
     }
 
+    const currentEmail = activeUser?.email || user?.email;
+
     return (
         <section className="auth-screen">
             <div className="auth-panel">
                 <img
-                    src="/assets/logo-purple.png"
+                    src="/assets/logo-purple.webp"
                     alt="Kiducatchis"
                 />
 
                 <span className="eyebrow">
-          // MEMBER ACTIVATION
+                    // MEMBER ACTIVATION
                 </span>
 
                 <h1>
                     SET YOUR <em>PASSWORD.</em>
                 </h1>
 
-                <p>
-                    {loading
-                        ? 'Verifying invitation...'
-                        : user
-                            ? 'Your invitation is verified. Set a password to access the club.'
-                            : 'Open the invitation link from your email to activate your membership.'}
-                </p>
+                {verifying ? (
+                    <p>Verifying invitation link...</p>
+                ) : currentEmail ? (
+                    <p>
+                        Activating account for <b>{currentEmail}</b>. Set a password to complete your membership setup.
+                    </p>
+                ) : (
+                    <p>
+                        Open the invitation link sent to your email to activate your club membership.
+                    </p>
+                )}
 
-                <form className="form-stack" onSubmit={submit}>
-                    <label>
-                        New password
-                        <input
-                            type="password"
-                            minLength={8}
-                            required
-                            autoComplete="new-password"
-                            value={password}
-                            onChange={e =>
-                                setPassword(e.target.value)
-                            }
-                        />
-                    </label>
+                <Flash error={error} />
 
-                    <label>
-                        Confirm password
-                        <input
-                            type="password"
-                            minLength={8}
-                            required
-                            autoComplete="new-password"
-                            value={confirm}
-                            onChange={e =>
-                                setConfirm(e.target.value)
-                            }
-                        />
-                    </label>
+                {(!verifying && !currentEmail) ? (
+                    <div style={{ marginTop: '20px' }}>
+                        <Link to="/login" className="btn btn-primary" style={{ width: '100%' }}>
+                            GO TO MEMBER LOGIN <ChevronRight size={16} />
+                        </Link>
+                    </div>
+                ) : (
+                    <form className="form-stack" onSubmit={submit}>
+                        <label>
+                            New password
+                            <input
+                                type="password"
+                                minLength={8}
+                                required
+                                autoComplete="new-password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                            />
+                        </label>
 
-                    <Flash error={error} />
+                        <label>
+                            Confirm password
+                            <input
+                                type="password"
+                                minLength={8}
+                                required
+                                autoComplete="new-password"
+                                value={confirm}
+                                onChange={e => setConfirm(e.target.value)}
+                            />
+                        </label>
 
-                    <button
-                        className="btn btn-primary"
-                        disabled={busy || loading || !user}
-                    >
-                        {busy
-                            ? 'ACTIVATING...'
-                            : 'ACTIVATE MEMBERSHIP'}
+                        <button
+                            className="btn btn-primary"
+                            disabled={busy || verifying || !currentEmail}
+                        >
+                            {busy
+                                ? 'ACTIVATING...'
+                                : 'ACTIVATE MEMBERSHIP'}
 
-                        <ChevronRight size={16} />
-                    </button>
-                </form>
+                            <ChevronRight size={16} />
+                        </button>
+                    </form>
+                )}
 
                 <p className="auth-foot">
                     Already activated?{' '}
@@ -240,7 +366,6 @@ function AppShell() {
                     path="/activate"
                     element={<Activate />}
                 />
-                <Route path="/activate" element={<Activate />} />
 
                 <Route path="/dashboard/*" element={<Protected><Dashboard /></Protected>} />
 

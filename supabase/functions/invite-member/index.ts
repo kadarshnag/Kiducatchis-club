@@ -13,6 +13,7 @@ Deno.serve(async (req: Request) => {
   const allowedOrigins = [appUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'].filter(Boolean);
   const requestOrigin = req.headers.get('origin') || '';
   const origin = allowedOrigins.includes(requestOrigin) ? requestOrigin : (appUrl || 'null');
+  const effectiveAppUrl = (allowedOrigins.includes(requestOrigin) ? requestOrigin : appUrl || 'http://localhost:5173').replace(/\/$/, '');
   if (req.method === 'OPTIONS') return json({}, 200, origin);
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, origin);
   if (requestOrigin && !allowedOrigins.includes(requestOrigin)) return json({ error: 'Origin not permitted' }, 403, origin);
@@ -20,7 +21,7 @@ Deno.serve(async (req: Request) => {
   try {
     const url = Deno.env.get('SUPABASE_URL');
     const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!url || !key || !appUrl) throw new Error('Configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and APP_URL in Supabase secrets.');
+    if (!url || !key) throw new Error('Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Supabase secrets.');
     const bearer = req.headers.get('authorization') || '';
     if (!bearer.toLowerCase().startsWith('bearer ')) return json({ error: 'Please sign in first.' }, 401, origin);
     const supabase = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -83,7 +84,7 @@ Deno.serve(async (req: Request) => {
       });
       if (createError) throw createError;
       await linkGuest(existing.id);
-      const { error: sendError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${appUrl}/activate` });
+      const { error: sendError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${effectiveAppUrl}/activate` });
       if (sendError) return json({ error: `Profile created, but the activation email failed: ${sendError.message}. You may retry using Supabase Authentication.` }, 502, origin);
       return json({ ok: true, status: 'repaired', message: 'Profile created and activation email sent.' }, 200, origin);
     }
@@ -94,7 +95,7 @@ Deno.serve(async (req: Request) => {
     }).select('id').single();
     if (intentError) throw intentError;
     const { data: invited, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${appUrl}/activate`,
+      redirectTo: `${effectiveAppUrl}/activate`,
     });
     if (inviteError) {
       await supabase.from('member_email_invites').delete().eq('id', intent.id);
