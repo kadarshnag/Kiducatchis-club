@@ -34,18 +34,74 @@ function TickerStrip() {
     );
 }
 export function Home() {
-    const { data: matches } = useRows('matches', { order: 'scheduled_at', limit: 60 }, true), { data: posts } = useRows('posts', { order: 'created_at', limit: 24 }), { data: profiles } = useRows('profiles', { order: 'created_at', limit: 40 }), { data: tourneys } = useRows('tournaments', { order: 'starts_on', asc: true, limit: 30 }); const featured = [...matches].sort((a, b) => Number(b.status === 'live') - Number(a.status === 'live') || Number(b.pinned) - Number(a.pinned) || new Date(b.scheduled_at) - new Date(a.scheduled_at)).slice(0, 3); const featuredPosts = [...posts].filter(p => p.published).sort((a, b) => Number(b.pinned) - Number(a.pinned) || new Date(b.created_at) - new Date(a.created_at)).slice(0, 3); const next = tourneys.find(t => t.status !== 'completed' && t.starts_on >= new Date(Date.now() - 864e5).toISOString().slice(0, 10)); return <>
+    const { data: matches } = useRows('matches', { order: 'scheduled_at', limit: 60 }, true), { data: posts } = useRows('posts', { order: 'created_at', limit: 24 }), { data: profiles } = useRows('profiles', { order: 'created_at', limit: 500 }, true), { data: tourneys } = useRows('tournaments', { order: 'starts_on', asc: true, limit: 30 }); const featured = [...matches].sort((a, b) => Number(b.status === 'live') - Number(a.status === 'live') || Number(b.pinned) - Number(a.pinned) || new Date(b.scheduled_at) - new Date(a.scheduled_at)).slice(0, 3); const featuredPosts = [...posts].filter(p => p.published).sort((a, b) => Number(b.pinned) - Number(a.pinned) || new Date(b.created_at) - new Date(a.created_at)).slice(0, 3); const next = tourneys.find(t => t.status !== 'completed' && t.starts_on >= new Date(Date.now() - 864e5).toISOString().slice(0, 10)); const selectedSquad = profiles.filter(p => p.is_active && p.role === 'player' && p.in_squad === true); return <>
         <section className="hero"><div className="hero-dots" /><div className="wrap hero-layout"><div className="hero-copy"><div className="hero-kicker"><span className="kicker-line" /> ULTIMATE FRISBEE • ONE FAMILY</div><h1>WE DON'T<br />JUST <em>PLAY.</em><br /><span>WE FLY.</span></h1><p>Built on hustle, fueled by spirit. Meet Kiducatchis — the team that brings its whole heart to every throw, cut, and catch.</p><div className="hero-actions"><Link to="/squad" className="btn btn-primary">MEET THE SQUAD <ArrowUpRight size={18} /></Link><Link className="text-link" to="/tournaments">Explore game day <ArrowRight size={17} /></Link></div><div className="hero-scroll"><ArrowDown size={17} /> SCROLL TO EXPLORE <span>01 / 04</span></div></div><div className="hero-visual"><div className="hero-halo" /><div className="jersey-feature"><img src="/assets/jersey-purple.webp" alt="Kiducatchis purple ultimate frisbee jersey front and back" /></div><div className="flying-badge"><Disc3 size={25} /> FLY HIGH. <b>CATCH HARD.</b></div><img className="hero-mascot" src="/assets/mascot.webp" alt="Kiducatchis mascot" /><span className="vertical-note">THE KIDUCATCHIS ERA</span></div></div><div className="hero-bottom-bar"><div className="wrap"><span>PASSION <i /> PRECISION <i /> SPIRIT</span><span>EST. IN THE LOVE OF THE GAME <Disc3 size={17} /></span></div></div></section>
         <TickerStrip />
         <section className="section game-section"><div className="wrap"><SectionHeader eyebrow="// FROM THE SIDELINES" title={<>GAME DAY <em>ENERGY.</em></>} copy="Follow the action as it happens. Every point, every block, every big moment." action={<Link className="section-link" to="/tournaments">ALL MATCHES <ArrowUpRight size={17} /></Link>} />{featured.length ? <div className="match-grid">{featured.map(m => <MatchCard key={m.id} m={m} />)}</div> : <div className="home-game-placeholder"><Disc3 size={46} /><div><h3>THE NEXT GAME IS COMING.</h3><p>When the council adds a tournament or starts a live game, scores appear here automatically.</p></div><Link to="/tournaments" className="btn btn-outline">Game schedule <ArrowRight size={16} /></Link></div>}</div></section>
         <section className="club-story-strip"><div className="wrap story-strip-layout"><div className="story-strip-media"><img loading="lazy" src="/assets/jersey-ice.webp" alt="Kiducatchis light blue alternate jersey" /><span className="corner-number">02 / WHO WE ARE</span></div><div className="story-strip-copy"><span className="eyebrow">// BEYOND THE GAME</span><h2>MORE THAN<br />A TEAM.<br /><em>A TRIBE.</em></h2><p>We believe great teams aren't made only on the scoreboard. They're made in early-morning practices, sideline cheers, trusted throws, and friendships that stick long after the final point.</p><div className="values-row"><span><Target size={22} /> HUSTLE</span><span><HeartHandshake size={22} /> SPIRIT</span><span><Zap size={22} /> UNITY</span></div><Link to="/about" className="btn btn-outline">OUR STORY <ArrowUpRight size={18} /></Link></div></div></section>
-        <section className="section"><div className="wrap"><SectionHeader eyebrow="// FACES OF THE FRANCHISE" title={<>THE <em>LINEUP.</em></>} copy="Different strengths. One unstoppable crew." action={<Link className="section-link" to="/squad">FULL ROSTER <ArrowUpRight size={17} /></Link>} />{profiles.filter(p => p.is_active).length ? <div className="member-grid">{profiles.filter(p => p.is_active).slice(0, 4).map(p => <MemberCard key={p.id} p={p} />)}</div> : <div className="squad-promo"><img src="/assets/mascot.webp" alt="Kiducatchis mascot" /><div><h3>THE SQUAD IS ASSEMBLING.</h3><p>Player profiles, roles and jersey numbers will appear as members join.</p></div><Link className="btn btn-primary" to="/squad">See the squad <ArrowUpRight size={16} /></Link></div>}</div></section>
+        <section className="section"><div className="wrap"><SectionHeader eyebrow="// FACES OF THE FRANCHISE" title={<>THE <em>LINEUP.</em></>} copy="Different strengths. One unstoppable crew." action={<Link className="section-link" to="/squad">FULL ROSTER <ArrowUpRight size={17} /></Link>} />{selectedSquad.length ? <div className="member-grid">{selectedSquad.slice(0, 4).map(p => <MemberCard key={p.id} p={p} />)}</div> : <div className="squad-promo"><img src="/assets/mascot.webp" alt="Kiducatchis mascot" /><div><h3>THE SQUAD IS ASSEMBLING.</h3><p>The council will announce the selected squad here. Player accounts can be created before selection.</p></div><Link className="btn btn-primary" to="/squad">See the squad <ArrowUpRight size={16} /></Link></div>}</div></section>
         <section className="section next-game-band"><div className="wrap next-game-inner"><span className="eyebrow">// UP NEXT ON THE CALENDAR</span><h2>{next ? next.name : 'YOUR NEXT GREAT PLAY STARTS HERE.'}</h2><p>{next ? `${date(next.starts_on)} • ${next.location || 'Location TBA'}` : 'Tournament announcements and selected squad lists will show here.'}</p><Link to="/tournaments" className="btn btn-primary">VIEW TOURNAMENTS <ArrowUpRight size={17} /></Link></div><img src="/assets/mascot.webp" alt="" /></section>
         <section className="section"><div className="wrap"><SectionHeader eyebrow="// LIFE BETWEEN THE LINES" title={<>LATEST <em>STORIES.</em></>} copy="Behind the points, there's always a story worth telling." action={<Link className="section-link" to="/stories">ALL STORIES <ArrowUpRight size={17} /></Link>} />{featuredPosts.length ? <div className="story-grid">{featuredPosts.map(p => <StoryCard key={p.id} p={p} />)}</div> : <Empty icon={BookOpen} title="Stories are on their way" text="Club members can share articles and photos from their dashboard." />}</div></section>
         <section className="home-cta"><div className="wrap"><img src="/assets/logo-purple.webp" alt="Kiducatchis" /><h2>ONE DISC.<br /><em>ENDLESS POSSIBILITIES.</em></h2><p>The next chapter is waiting to be written. Be part of it.</p><Link className="btn btn-primary" to="/contact">GET IN TOUCH <ArrowUpRight size={18} /></Link></div></section></>
 }
 export function MemberCard({ p }) { return <Link to={`/profile/${p.id}`} className="member-card"><div className="member-picture">{p.avatar_path ? <img src={fileUrl('club-media', p.avatar_path)} alt={p.full_name} /> : <div className="avatar-placeholder">{p.full_name?.charAt(0)}</div>}<span className="jersey-big">{p.jersey_number === null ? '—' : p.jersey_number}</span></div><div className="member-meta"><div><h3>{p.full_name}</h3><small>{p.position}</small></div><ArrowUpRight size={19} /></div>{p.role !== 'player' && <span className="member-ribbon">{p.council_title || p.role}</span>}</Link> }
-export function Squad() { const { data, loading } = useRows('profiles', { order: 'full_name' }); const [pos, setPos] = useState('All'), [q, setQ] = useState(''); const found = data.filter(p => p.is_active && (pos === 'All' || p.position === pos) && p.full_name.toLowerCase().includes(q.toLowerCase())); return <><PageHero eyebrow="// THE PEOPLE BEHIND THE POINTS" title={<>MEET THE <em>SQUAD.</em></>} copy="Every handler, every cutter, every teammate. This is the lineup that makes it happen." /><section className="section"><div className="wrap"><div className="filter-bar"><div className="chips">{['All', 'Handler', 'Cutter', 'Flexible'].map(x => <button key={x} className={pos === x ? 'chip active' : 'chip'} onClick={() => setPos(x)}>{x}</button>)}</div><input aria-label="Search players" placeholder="Search player..." value={q} onChange={e => setQ(e.target.value)} /></div>{found.length ? <div className="member-grid">{found.map(p => <MemberCard key={p.id} p={p} />)}</div> : <Empty icon={Users} title={loading ? 'Loading squad...' : 'No players found'} text="The squad appears here after the admin sets up member accounts." />}</div></section></> }
+export function Squad() {
+    const { data, loading, error } = useRows('profiles', { order: 'full_name' }, true);
+    const [pos, setPos] = useState('All');
+    const [q, setQ] = useState('');
+
+    // Only Admin/Council-selected players appear in the public squad.
+    const selectedPlayers = data.filter(p =>
+        p.is_active && p.role === 'player' && p.in_squad === true
+    );
+    const found = selectedPlayers.filter(p =>
+        (pos === 'All' || p.position === pos) &&
+        p.full_name?.toLowerCase().includes(q.trim().toLowerCase())
+    );
+
+    return <>
+        <PageHero
+            eyebrow="// THE PEOPLE BEHIND THE POINTS"
+            title={<>MEET THE <em>SQUAD.</em></>}
+            copy="The players selected to represent Kiducatchis. One team, one spirit."
+        />
+        <section className="section">
+            <div className="wrap">
+                <div className="filter-bar">
+                    <div className="chips">
+                        {['All', 'Handler', 'Cutter', 'Flexible'].map(x =>
+                            <button key={x} className={pos === x ? 'chip active' : 'chip'} onClick={() => setPos(x)}>{x}</button>
+                        )}
+                    </div>
+                    <input
+                        aria-label="Search squad"
+                        placeholder="Search squad..."
+                        value={q}
+                        onChange={e => setQ(e.target.value)}
+                    />
+                </div>
+                {error ? (
+                    <Empty icon={Users} title="Unable to load squad" text={error} />
+                ) : found.length ? (
+                    <div className="member-grid">
+                        {found.map(p => <MemberCard key={p.id} p={p} />)}
+                    </div>
+                ) : (
+                    <Empty
+                        icon={Users}
+                        title={loading ? 'Loading squad...' : selectedPlayers.length ? 'No matching players' : 'Squad not selected yet'}
+                        text={loading
+                            ? 'Retrieving the latest club lineup.'
+                            : selectedPlayers.length
+                                ? 'Try a different name or position.'
+                                : 'Admin and Council will select the club squad from the existing player list.'}
+                    />
+                )}
+            </div>
+        </section>
+    </>;
+}
+
 export function Council() { const { data } = useRows('profiles', { order: 'full_name' }); return <><PageHero eyebrow="// MEET THE LEADERSHIP" title={<>THE <em>COUNCIL.</em></>} copy="The people carrying the vision, guiding the spirit, and keeping the club moving." /><section className="section"><div className="wrap">{data.some(p => p.is_active && ['council', 'admin'].includes(p.role)) ? <div className="member-grid">{data.filter(p => p.is_active && ['council', 'admin'].includes(p.role)).map(p => <MemberCard p={p} key={p.id} />)}</div> : <Empty title="Council list coming soon" text="Council profiles appear here when the administrator assigns their roles." />}</div></section></> }
 export function About() { return <><PageHero eyebrow="// THIS IS OUR STORY" title={<>BUILT TO <em>FLY.</em></>} copy="Our game is ultimate. Our bond is everything." /><section className="section"><div className="wrap about-grid"><div><span className="eyebrow">// WHO WE ARE</span><h2>THE DISC CONNECTS US.</h2><p>Kiducatchis is an ultimate frisbee club that celebrates the speed, strategy and spirit of the sport. We value trust, creativity, teamwork and respect on and off the pitch.</p><p>From our first warm-up to the last point of the final, we push each other to grow — as athletes and as people. Every teammate has a place here.</p><div className="values-row"><span><Zap /> ENERGY</span><span><HeartHandshake /> SPIRIT</span><span><Target /> PRECISION</span></div></div><img src="/assets/jersey-purple.webp" alt="Purple Kiducatchis club jersey" /></div></section><section className="section alt-section"><div className="wrap"><SectionHeader eyebrow="// OUR CODE" title={<>PLAY HARD. <em>PLAY FAIR.</em></>} /><div className="value-cards"><article><span>01</span><h3>THE SPIRIT</h3><p>Respect the opponent, honor the rules, and keep the game beautiful.</p></article><article><span>02</span><h3>THE TEAM</h3><p>Trust the throw, make the cut, and always back your people.</p></article><article><span>03</span><h3>THE DRIVE</h3><p>Show up, improve, and take the next step together.</p></article></div></div></section></> }
 export function Gallery() { const { data } = useRows('posts', { eq: { type: 'photo' }, order: 'created_at', limit: 120 }); return <><PageHero eyebrow="// FREEZE THE MOMENT" title={<>THROUGH OUR <em>LENS.</em></>} copy="Every epic layout, every road trip, every off-field memory." /><section className="section"><div className="wrap">{data.filter(p => p.published && p.image_path).length ? <div className="gallery-grid">{data.filter(p => p.published && p.image_path).map(p => <figure key={p.id}><img src={fileUrl('club-media', p.image_path)} alt={p.title} loading="lazy" /><figcaption><h3>{p.title}</h3><span>{date(p.created_at)}</span></figcaption></figure>)}</div> : <Empty icon={ImageIcon} title="Gallery is coming to life" text="Member-uploaded pictures will be displayed right here." />}</div></section></> }
