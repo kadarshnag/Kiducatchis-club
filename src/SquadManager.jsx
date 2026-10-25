@@ -11,6 +11,7 @@ export default function SquadManager() {
     const [view, setView] = useState('all');
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState(null);
+    const [bulkBusy, setBulkBusy] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -20,7 +21,6 @@ export default function SquadManager() {
             try {
                 const { data, error } = await sb.from('profiles')
                     .select('id,full_name,position,jersey_number,avatar_path,is_active,in_squad,role')
-                    .eq('role', 'player')
                     .order('full_name');
                 if (error) throw error;
                 if (active) setPlayers(data || []);
@@ -45,7 +45,7 @@ export default function SquadManager() {
     }), [players, search, view]);
 
     async function toggle(player) {
-        if (!isCore(profile) || busyId) return;
+        if (!isCore(profile) || busyId || bulkBusy) return;
         setBusyId(player.id);
         setError('');
         try {
@@ -64,6 +64,25 @@ export default function SquadManager() {
         }
     }
 
+    async function addAll() {
+        if (!isCore(profile) || busyId || bulkBusy) return;
+        setBulkBusy(true);
+        setError('');
+        try {
+            const { error: rpcError } = await sb.rpc('core_select_all_squad');
+            if (rpcError) throw rpcError;
+            const { data, error: readError } = await sb.from('profiles')
+                .select('id,full_name,position,jersey_number,avatar_path,is_active,in_squad,role')
+                .order('full_name');
+            if (readError) throw readError;
+            setPlayers(data || []);
+        } catch (e) {
+            setError(errorText(e));
+        } finally {
+            setBulkBusy(false);
+        }
+    }
+
     if (!isCore(profile)) return <p>You do not have permission to manage the squad.</p>;
 
     return (
@@ -71,11 +90,11 @@ export default function SquadManager() {
             <div className="dash-heading">
                 <span className="eyebrow">// CLUB SELECTION</span>
                 <h1>SQUAD SELECTION</h1>
-                <p>Admin and Council can choose the public squad from existing player records.</p>
+                <p>All active Players, Council members and Admins are eligible. Select individually or add everyone in one click.</p>
             </div>
 
             <div className="squad-manage-stats">
-                <div><Users size={19} /><strong>{players.length}</strong><span>REGISTERED PLAYERS</span></div>
+                <div><Users size={19} /><strong>{players.filter(p => p.is_active).length}</strong><span>ACTIVE CLUB MEMBERS</span></div>
                 <div><ShieldCheck size={19} /><strong>{selected}</strong><span>SELECTED FOR SQUAD</span></div>
                 <div><UserPlus size={19} /><strong>{players.filter(p => p.is_active && !p.in_squad).length}</strong><span>AVAILABLE PLAYERS</span></div>
             </div>
@@ -88,6 +107,10 @@ export default function SquadManager() {
                         <option value="squad">Selected squad</option>
                         <option value="available">Available players</option>
                     </select>
+                    <button type="button" className="small-btn" onClick={addAll}
+                        disabled={bulkBusy || Boolean(busyId) || !players.some(p => p.is_active && !p.in_squad)}>
+                        <UserPlus size={15} /> {bulkBusy ? 'ADDING…' : 'ADD ALL ACTIVE MEMBERS'}
+                    </button>
                 </div>
                 {error && <p className="flash error" role="alert">{error}</p>}
                 {loading ? <p className="small-note">Loading players…</p> : filtered.length === 0 ?
@@ -100,14 +123,14 @@ export default function SquadManager() {
                                 </div>
                                 <div className="squad-manage-info">
                                     <Link to={`/profile/${player.id}`}><b>{player.full_name}</b></Link>
-                                    <small>#{player.jersey_number ?? '—'} · {player.position} · {!player.is_active ? 'Inactive' : player.in_squad ? 'Selected squad' : 'Player pool'}</small>
+                                    <small>#{player.jersey_number ?? '—'} · {player.position} · {player.role !== 'player' ? player.role.toUpperCase() + ' · ' : ''}{!player.is_active ? 'Inactive' : player.in_squad ? 'Selected squad' : 'Player pool'}</small>
                                 </div>
                                 <button
                                     type="button"
                                     className={'small-btn ' + (player.in_squad ? 'squad-remove' : 'squad-add')}
                                     aria-pressed={Boolean(player.in_squad)}
                                     onClick={() => toggle(player)}
-                                    disabled={Boolean(busyId) || (!player.is_active && !player.in_squad)}
+                                    disabled={bulkBusy || Boolean(busyId) || (!player.is_active && !player.in_squad)}
                                 >
                                     {player.in_squad ? <><Check size={15} /> SELECTED — REMOVE</> : <><UserPlus size={15} /> ADD TO SQUAD</>}
                                 </button>
