@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 const ThemeContext = createContext({
-    theme: 'dark',
-    isLight: false,
+    theme: 'light',
+    isLight: true,
     toggleTheme: () => { },
     setTheme: () => { },
-    logoSrc: '/assets/logo-purple.webp',
-    jerseySrc: '/assets/jersey-purple.webp',
-    altJerseySrc: '/assets/jersey-ice.webp'
+    logoSrc: '/assets/logo-blue.webp',
+    jerseySrc: '/assets/jersey-ice.webp',
+    altJerseySrc: '/assets/jersey-purple.webp'
 });
 
 export const useTheme = () => useContext(ThemeContext);
@@ -17,12 +17,9 @@ export function ThemeProvider({ children }) {
         try {
             const saved = localStorage.getItem('kiducatchis_theme');
             if (saved === 'light' || saved === 'dark') return saved;
-            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-                return 'light';
-            }
-            return 'dark';
+            return 'light';
         } catch {
-            return 'dark';
+            return 'light';
         }
     });
 

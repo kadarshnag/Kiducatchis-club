@@ -440,6 +440,24 @@ input:not([type='checkbox']):not([type='range']),textarea,select{width:100%;back
   color: #1e3a8a;
 }
 
+/* Light Loader */
+[data-theme='light'] .launch-loader {
+  background: radial-gradient(circle at 60% 30%, #e0edff, #f3f6fc 72%);
+}
+
+[data-theme='light'] .launch-loader > img {
+  filter: drop-shadow(0 0 25px rgba(59, 130, 246, 0.3));
+}
+
+[data-theme='light'] .launch-loader > span {
+  color: #475569;
+}
+
+[data-theme='light'] .launch-disc {
+  color: #3b82f6;
+  filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.45));
+}
+
 /* Light Header */
 [data-theme='light'] .site-header {
   background: rgba(244, 247, 252, 0.92);
