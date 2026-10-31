@@ -4,6 +4,7 @@ import { ArrowUpRight, Disc3, Menu, X, Instagram, Mail, LogIn, LogOut, LayoutDas
 import { sb, configured, isCore, errorText } from './lib.js';
 import { Home, About, Squad, Council, Stories, Gallery, Contact, Tournaments, MatchPage, Login, Join, ProfilePage } from './Public.jsx';
 import Dashboard from './Dashboard.jsx';
+import { ThemeProvider, useTheme, ThemeSwitcher } from './ThemeContext.jsx';
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }) {
@@ -13,9 +14,9 @@ export function AuthProvider({ children }) {
     const logout = async () => { await sb?.auth.signOut(); setUser(null); setProfile(null) };
     return <AuthContext.Provider value={{ user, profile, loading, refresh: () => refresh(user), logout }}>{children}</AuthContext.Provider>;
 }
-export function Loader() { const [show, setShow] = useState(true); useEffect(() => { const id = setTimeout(() => setShow(false), 1500); return () => clearTimeout(id) }, []); return show ? <div className="launch-loader" aria-label="Loading Kiducatchis"><div className="launch-disc"><Disc3 size={58} strokeWidth={1.8} /></div><img src="/assets/logo-purple.webp" alt="Kiducatchis" /><span>CATCH THE SPIRIT.</span></div> : null; }
-function Brand() { return <Link className="brand" to="/"><img src="/assets/logo-purple.webp" alt="Kiducatchis logo" /></Link> }
-function Header() { const [open, setOpen] = useState(false), { user, profile } = useAuth(), location = useLocation(); useEffect(() => setOpen(false), [location.pathname]); const paths = [['/', 'Home'], ['/squad', 'The Squad'], ['/tournaments', 'Game Day'], ['/stories', 'Stories'], ['/gallery', 'Gallery'], ['/about', 'Our Club'], ['/contact', 'Contact']]; return <header className="site-header"><div className="wrap header-inner"><Brand /><nav className={'main-nav ' + (open ? 'is-open' : '')} aria-label="Main navigation">{paths.map(([to, label]) => <NavLink key={to} to={to} end={to === '/'}>{label}</NavLink>)}</nav><div className="header-actions">{user ? <Link className="member-pill" to="/dashboard" title="Member dashboard">{profile?.avatar_path ? <img src={sb.storage.from('club-media').getPublicUrl(profile.avatar_path).data.publicUrl} alt="Profile" /> : <span>{(profile?.full_name || 'M').charAt(0)}</span>}<small>Dashboard</small></Link> : <Link className="login-pill" to="/login"><LogIn size={15} /> Member login</Link>}<button className="mobile-toggle" aria-label="Toggle navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button></div></div></header> }
+export function Loader() { const { logoSrc } = useTheme(), [show, setShow] = useState(true); useEffect(() => { const id = setTimeout(() => setShow(false), 1500); return () => clearTimeout(id) }, []); return show ? <div className="launch-loader" aria-label="Loading Kiducatchis"><div className="launch-disc"><Disc3 size={58} strokeWidth={1.8} /></div><img src={logoSrc} alt="Kiducatchis" /><span>CATCH THE SPIRIT.</span></div> : null; }
+function Brand() { const { logoSrc } = useTheme(); return <Link className="brand" to="/"><img src={logoSrc} alt="Kiducatchis logo" /></Link> }
+function Header() { const [open, setOpen] = useState(false), { user, profile } = useAuth(), location = useLocation(); useEffect(() => setOpen(false), [location.pathname]); const paths = [['/', 'Home'], ['/squad', 'The Squad'], ['/tournaments', 'Game Day'], ['/stories', 'Stories'], ['/gallery', 'Gallery'], ['/about', 'Our Club'], ['/contact', 'Contact']]; return <header className="site-header"><div className="wrap header-inner"><Brand /><nav className={'main-nav ' + (open ? 'is-open' : '')} aria-label="Main navigation">{paths.map(([to, label]) => <NavLink key={to} to={to} end={to === '/'}>{label}</NavLink>)}<div className="mobile-theme-row"><ThemeSwitcher /></div></nav><div className="header-actions"><ThemeSwitcher />{user ? <Link className="member-pill" to="/dashboard" title="Member dashboard">{profile?.avatar_path ? <img src={sb.storage.from('club-media').getPublicUrl(profile.avatar_path).data.publicUrl} alt="Profile" /> : <span>{(profile?.full_name || 'M').charAt(0)}</span>}<small>Dashboard</small></Link> : <Link className="login-pill" to="/login"><LogIn size={15} /> Member login</Link>}<button className="mobile-toggle" aria-label="Toggle navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button></div></div></header> }
 function Footer() { return <footer className="footer"><div className="wrap footer-top"><div><Brand /><p>Fierce on the field. Family off it.<br />Built for the love of ultimate.</p></div><div><b>EXPLORE</b><Link to="/squad">The squad</Link><Link to="/tournaments">Tournaments</Link><Link to="/gallery">Gallery</Link></div><div><b>THE CLUB</b><Link to="/about">Our story</Link><Link to="/council">Council</Link><Link to="/contact">Get in touch</Link></div><div><b>ONE DISC. ONE FAMILY.</b><p>Catch the game. Chase the moment. Be part of something bigger.</p><Link to="/contact" className="footer-cta">Talk to us <ArrowUpRight size={15} /></Link></div></div><div className="wrap footer-bottom"><span>© {new Date().getFullYear()} Kiducatchis Ultimate Frisbee Club</span><span>MADE FOR THE SPIRIT OF THE GAME <Disc3 size={16} /></span></div></footer> }
 export function SectionHeader({ eyebrow, title, copy, action }) { return <div className="section-heading"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{copy && <p>{copy}</p>}</div>{action}</div> }
 export function Empty({ title = 'Nothing here yet', text = 'Check back for an update.', icon: Icon = Disc3 }) { return <div className="empty"><Icon size={33} /><h3>{title}</h3><p>{text}</p></div> }
@@ -245,12 +246,13 @@ function Activate() {
     }
 
     const currentEmail = activeUser?.email || user?.email;
+    const { logoSrc } = useTheme();
 
     return (
         <section className="auth-screen">
             <div className="auth-panel">
                 <img
-                    src="/assets/logo-purple.webp"
+                    src={logoSrc}
                     alt="Kiducatchis"
                 />
 
@@ -387,4 +389,4 @@ function AppShell() {
     </>
 }
 
-export default function App() { return <AuthProvider><AppShell /></AuthProvider> }
+export default function App() { return <ThemeProvider><AuthProvider><AppShell /></AuthProvider></ThemeProvider> }
