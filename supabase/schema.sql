@@ -68,6 +68,7 @@ create table if not exists public.posts (
   title text not null,
   body text not null default '',
   image_path text,
+  images jsonb not null default '[]'::jsonb,
   published boolean not null default true,
   pinned boolean not null default false,
   created_at timestamptz not null default now(),
@@ -159,8 +160,9 @@ create table if not exists public.strategies (
   title text not null,
   description text default '',
   media_path text,
-  media_type text check(media_type in ('image','video','whiteboard','other')),
+  media_type text check(media_type in ('image','video','whiteboard','link','other')),
   snapshot_path text,
+  link_url text,
   created_at timestamptz not null default now()
 );
 create table if not exists public.finance_transactions (
@@ -217,6 +219,8 @@ create policy "profiles readable by everyone" on public.profiles for select to a
 create policy "member edits own profile" on public.profiles for update to authenticated using(id=(select auth.uid())) with check(id=(select auth.uid()));
 revoke update on public.profiles from authenticated;
 grant update (full_name, position, jersey_number, avatar_path, bio) on public.profiles to authenticated;
+grant delete on public.profiles to authenticated;
+create policy "admins can delete profiles" on public.profiles for delete to authenticated using(public.is_admin() and id<>(select auth.uid()));
 
 create or replace function public.admin_update_member(p_id uuid,p_role text,p_position text,p_number integer,p_title text,p_active boolean)
 returns void language plpgsql security definer set search_path='' as $$
@@ -230,6 +234,32 @@ end $$;
 revoke all on function public.admin_update_member(uuid,text,text,integer,text,boolean) from public;
 grant execute on function public.admin_update_member(uuid,text,text,integer,text,boolean) to authenticated;
 
+create or replace function public.admin_delete_member(p_id uuid)
+returns void language plpgsql security definer set search_path='' as $$
+declare
+  caller_id uuid := auth.uid();
+begin
+  if not public.is_admin() then raise exception 'Administrator access required'; end if;
+  if p_id = caller_id then raise exception 'You cannot delete your own admin account'; end if;
+  if p_id is null then raise exception 'Member ID is required'; end if;
+
+  delete from public.tournament_roster where player_id = p_id;
+  delete from public.match_events where player_id = p_id or assist_id = p_id;
+  update public.match_events set created_by = caller_id where created_by = p_id;
+  delete from public.finance_transactions where player_id = p_id;
+  update public.finance_transactions set created_by = caller_id where created_by = p_id;
+  update public.finance_transactions set holder_id = caller_id where holder_id = p_id and (transferred_to_id is null or transferred_to_id <> caller_id);
+  delete from public.finance_transactions where holder_id = p_id or transferred_to_id = p_id;
+  delete from public.posts where author_id = p_id;
+  delete from public.strategies where author_id = p_id;
+  delete from public.invitations where created_by = p_id or used_by = p_id;
+  delete from public.member_email_invites where auth_user_id = p_id;
+  delete from public.profiles where id = p_id;
+  delete from auth.users where id = p_id;
+end $$;
+revoke all on function public.admin_delete_member(uuid) from public;
+grant execute on function public.admin_delete_member(uuid) to authenticated;
+
 create policy "admins manage invitations" on public.invitations for all to authenticated using(public.is_admin()) with check(public.is_admin());
 create policy "anyone can read published posts" on public.posts for select to anon,authenticated using(published=true or author_id=(select auth.uid()) or public.is_core());
 create policy "members create own posts" on public.posts for insert to authenticated with check(author_id=(select auth.uid()) and exists(select 1 from public.profiles where id=auth.uid() and is_active));
@@ -238,9 +268,9 @@ create policy "authors or core delete posts" on public.posts for delete to authe
 -- Non-core authors cannot change their authored posts to pinned by UPDATE (check above),
 -- but can set pinned=true upon INSERT unless column privileges protect it.
 revoke insert,update on public.posts from authenticated;
-grant insert (author_id,type,title,body,image_path,published) on public.posts to authenticated;
+grant insert (author_id,type,title,body,image_path,images,published) on public.posts to authenticated;
 -- Core pinning uses security-definer RPC to avoid granting pinned column globally.
-grant update (title,body,image_path,published) on public.posts to authenticated;
+grant update (title,body,image_path,images,published) on public.posts to authenticated;
 create or replace function public.core_pin_post(p_id uuid,p_pin boolean) returns void language plpgsql security definer set search_path='' as $$
 begin if not public.is_core() then raise exception 'Council only'; end if; update public.posts set pinned=p_pin where id=p_id; end $$;
 revoke all on function public.core_pin_post(uuid,boolean) from public;

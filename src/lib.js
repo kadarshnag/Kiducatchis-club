@@ -14,3 +14,61 @@ export async function upload(bucket,file,user,maxMB=20){if(!file)throw Error('Se
 export async function query(table,options={}){if(!sb)return [];let q=sb.from(table).select(options.select||'*');if(options.eq)for(const [key,val] of Object.entries(options.eq))q=q.eq(key,val);if(options.order)q=q.order(options.order,{ascending:options.asc??false});if(options.limit)q=q.limit(options.limit);const {data,error}=await q;if(error)throw error;return data||[];}
 export async function save(table,record){const {data,error}=await sb.from(table).insert(record).select().single();if(error)throw error;return data;}
 export async function patch(table,id,record){const {data,error}=await sb.from(table).update(record).eq('id',id).select().single();if(error)throw error;return data;}
+export function getPostImages(post){
+    if(!post)return [];
+    if(Array.isArray(post.images)&&post.images.length>0){
+        return post.images.map(img=>typeof img==='string'?{path:img,caption:''}:{path:img.path||'',caption:img.caption||''}).filter(img=>Boolean(img.path));
+    }
+    if(post.body&&post.body.includes('<!--kiducatchis_images:')){
+        try{
+            const m=post.body.match(/<!--kiducatchis_images:(.*?)-->/s);
+            if(m&&m[1]){
+                const parsed=JSON.parse(m[1]);
+                if(Array.isArray(parsed)&&parsed.length){
+                    return parsed.map(img=>typeof img==='string'?{path:img,caption:''}:{path:img.path||'',caption:img.caption||''}).filter(img=>Boolean(img.path));
+                }
+            }
+        }catch(_){}
+    }
+    if(post.image_path){
+        return [{path:post.image_path,caption:''}];
+    }
+    return [];
+}
+export function getCleanPostBody(body){
+    if(!body)return '';
+    return body.replace(/<!--kiducatchis_images:.*?-->/gs,'').trim();
+}
+export function getYouTubeEmbedUrl(url){
+    if(!url)return null;
+    try{
+        const u=new URL(url);
+        if(u.hostname.includes('youtube.com')){
+            const v=u.searchParams.get('v');
+            if(v)return `https://www.youtube-nocookie.com/embed/${v}`;
+            if(u.pathname.startsWith('/shorts/')){
+                const id=u.pathname.split('/shorts/')[1]?.split('/')[0]?.split('?')[0];
+                if(id)return `https://www.youtube-nocookie.com/embed/${id}`;
+            }
+            if(u.pathname.startsWith('/embed/'))return url;
+        }
+        if(u.hostname==='youtu.be'){
+            const id=u.pathname.replace(/^\//,'').split('?')[0];
+            if(id)return `https://www.youtube-nocookie.com/embed/${id}`;
+        }
+    }catch(_){}
+    return null;
+}
+export function getVimeoEmbedUrl(url){
+    if(!url)return null;
+    try{
+        const u=new URL(url);
+        if(u.hostname.includes('vimeo.com')){
+            const id=u.pathname.split('/').filter(Boolean)[0];
+            if(id&&/^\d+$/.test(id))return `https://player.vimeo.com/video/${id}`;
+        }
+    }catch(_){}
+    return null;
+}
+
+

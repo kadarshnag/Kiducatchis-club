@@ -5,6 +5,8 @@ import { sb, configured, isCore, errorText } from './lib.js';
 import { Home, About, Squad, Council, Stories, Gallery, Contact, Tournaments, MatchPage, Login, Join, ProfilePage } from './Public.jsx';
 import Dashboard from './Dashboard.jsx';
 import { ThemeProvider, useTheme, ThemeSwitcher } from './ThemeContext.jsx';
+import { DialogProvider, useDialog } from './Dialog.jsx';
+export { useDialog };
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }) {
@@ -153,8 +155,8 @@ function Activate() {
                     return;
                 }
 
-                // Check for token_hash in query (Direct OTP link)
-                const tokenHash = searchParams.get('token_hash');
+                // Check for token_hash or token in query (Direct OTP link)
+                const tokenHash = searchParams.get('token_hash') || searchParams.get('token');
                 const type = searchParams.get('type') || 'invite';
                 if (tokenHash) {
                     const { data: sessionData, error: otpErr } = await sb.auth.verifyOtp({ token_hash: tokenHash, type });
@@ -389,4 +391,4 @@ function AppShell() {
     </>
 }
 
-export default function App() { return <ThemeProvider><AuthProvider><AppShell /></AuthProvider></ThemeProvider> }
+export default function App() { return <ThemeProvider><AuthProvider><DialogProvider><AppShell /></DialogProvider></AuthProvider></ThemeProvider> }
