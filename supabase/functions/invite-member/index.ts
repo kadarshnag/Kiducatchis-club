@@ -32,6 +32,26 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Active Admin or Council access required' }, 403, origin);
 
     const body = await req.json();
+    if (body.action === 'delete_member') {
+      if (caller.role !== 'admin') return json({ error: 'Only administrators can delete members.' }, 403, origin);
+      const targetId = String(body.member_id || '').trim();
+      if (!targetId) return json({ error: 'Member ID required.' }, 400, origin);
+      if (targetId === auth.user.id) return json({ error: 'You cannot delete your own admin account.' }, 400, origin);
+
+      await supabase.from('tournament_roster').delete().eq('player_id', targetId);
+      await supabase.from('match_events').delete().eq('player_id', targetId);
+      await supabase.from('match_events').delete().eq('assist_id', targetId);
+      await supabase.from('finance_transactions').delete().eq('player_id', targetId);
+
+      const { error: profileError } = await supabase.from('profiles').delete().eq('id', targetId);
+      try {
+        await supabase.auth.admin.deleteUser(targetId);
+      } catch (_) {
+        // Player might be a squad guest without an Auth account
+      }
+      if (profileError) return json({ error: profileError.message }, 400, origin);
+      return json({ ok: true, message: 'Member deleted.' }, 200, origin);
+    }
     const email = String(body.email || '').trim().toLowerCase();
     const fullName = String(body.full_name || '').trim();
     const role = String(body.role || 'player');
