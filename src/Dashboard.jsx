@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Calendar, Camera, Check, CheckCircle2, ChevronDown, Clock, Copy, CreditCard, Disc3, Download, ExternalLink, Eye, FileText, Globe, Image as ImageIcon, LayoutDashboard, Link2, LogOut, Mail, Menu, Minus, Pause, PenTool, Play, Plus, Save, Shield, ShieldCheck, Square, Target, Trash2, Trophy, Upload, UserPlus, UserRound, Users, Video, Wallet, X, Zap } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Calendar, Camera, Check, CheckCircle2, ChevronDown, Clock, Copy, CreditCard, Disc3, Download, ExternalLink, Eye, EyeOff, FileText, Globe, Image as ImageIcon, KeyRound, LayoutDashboard, Link2, Lock, LogOut, Mail, Menu, Minus, Pause, PenTool, Play, Plus, Save, Shield, ShieldCheck, Square, Target, Trash2, Trophy, Upload, UserPlus, UserRound, Users, Video, Wallet, X, Zap } from 'lucide-react';
 import { sb, query, save, patch, upload, fileUrl, signedUrl, date, time, money, fmtClock, errorText, isCore, isAdmin, getPostImages, getCleanPostBody, getYouTubeEmbedUrl, getVimeoEmbedUrl } from './lib.js';
 import { useAuth, Empty, Flash, Modal, useDialog } from './App.jsx';
 import { useTheme } from './ThemeContext.jsx';
@@ -12,9 +12,368 @@ const FormButton = ({ busy, children }) => <button type="submit" className="btn 
 function Panel({ title, subtitle, children, action }) { return <section className="dash-panel"><div className="dash-panel-head"><div><h3>{title}</h3>{subtitle && <p>{subtitle}</p>}</div>{action}</div>{children}</section> }
 function Heading({ eyebrow, title, subtitle }) { return <div className="dash-heading"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div> }
 function useAsync() { const [busy, setBusy] = useState(false), [err, setErr] = useState(''), [ok, setOk] = useState(''); async function run(fn, msg = 'Saved successfully') { setBusy(true); setErr(''); setOk(''); try { await fn(); setOk(msg); return true } catch (e) { setErr(errorText(e)); return false } finally { setBusy(false) } } return { busy, err, ok, run, clear: () => { setErr(''); setOk('') } } }
-export default function Dashboard() { const { profile, user, logout } = useAuth(), { logoSrc } = useTheme(), [search, setSearch] = useSearchParams(); const section = search.get('tab') || 'overview'; const [mobile, setMobile] = useState(false); const core = isCore(profile), admin = isAdmin(profile); const show = tab => setSearch({ tab }); const allowed = nav.filter(([id]) => !['scoring', 'finances', 'squad', 'members', 'messages'].includes(id) || core); const active = allowed.some(([id]) => id === section) ? section : 'overview'; return <section className="dashboard-shell"><aside className={'dash-side ' + (mobile ? 'dash-mobile-open' : '')}><div className="dash-side-top"><img src={logoSrc} alt="Kiducatchis" /><div className="small-eyebrow">CLUB MANAGEMENT</div></div><div className="side-nav">{allowed.map(([id, title, Icon]) => <button key={id} className={active === id ? 'active' : ''} onClick={() => { show(id); setMobile(false) }}><Icon size={18} />{title}</button>)}</div><div className="side-foot"><Link to="/"><ArrowRight size={17} /> Back to website</Link><button onClick={logout}><LogOut size={17} /> Sign out</button></div></aside><div className="dash-content"><div className="dash-topbar"><button className="mobile-dash-toggle" onClick={() => setMobile(!mobile)}><Menu size={20} /> MENU</button><span><ShieldCheck size={16} /> {profile.role.toUpperCase()} ACCESS</span><Link to={`/profile/${user.id}`}>{profile.avatar_path ? <img src={fileUrl('club-media', profile.avatar_path)} alt="Profile" /> : <span className="dash-letter">{profile.full_name?.charAt(0) || 'K'}</span>}<b>{profile.full_name}</b></Link></div><div className="dash-body">{active === 'overview' && <Overview profile={profile} show={show} />} {active === 'profile' && <MyProfile />}{active === 'posts' && <Posts />}{active === 'strategies' && <Strategies />}{active === 'whiteboard' && <Whiteboard />}{active === 'tournaments' && <TournamentAdmin core={core} />} {active === 'scoring' && core && <Scoring />}{active === 'finances' && core && <Finance />}{active === 'squad' && core && <SquadManager />}{active === 'members' && core && <Members />}{active === 'messages' && core && <Messages />}</div></div></section> }
-function Overview({ profile, show }) { const { data: members } = useData('profiles'), { data: tournaments } = useData('tournaments'), { data: matches } = useData('matches', { order: 'scheduled_at', limit: 80 }, true), { data: posts } = useData('posts', { order: 'created_at', limit: 50 }), { data: strategies } = useData('strategies', { limit: 100 }); const core = isCore(profile); return <><Heading eyebrow="// YOUR CLUB, AT A GLANCE" title={`HELLO, ${profile.full_name.split(' ')[0].toUpperCase()}.`} subtitle="Here's what is happening inside the Kiducatchis club." /><div className="dash-stats"><div><Users /><span>ACTIVE PLAYERS</span><strong>{members.filter(p => p.is_active).length}</strong></div><div><Trophy /><span>TOURNAMENTS</span><strong>{tournaments.length}</strong></div><div><Activity /><span>RECORDED MATCHES</span><strong>{matches.length}</strong></div><div><PenTool /><span>GAME PLANS</span><strong>{strategies.length}</strong></div></div><div className="dash-two"><Panel title="Next up" subtitle="Upcoming and active club matches" action={<button className="inline-button" onClick={() => show('tournaments')}>VIEW ALL <ArrowRight size={15} /></button>}>{matches.filter(m => m.status !== 'completed').sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)).slice(0, 4).map(m => <Link key={m.id} to={`/games/${m.id}`} className="dash-list-row"><div><b>Kiducatchis vs {m.opponent}</b><small>{date(m.scheduled_at)} · {m.status}</small></div><ArrowUpRight size={16} /></Link>)}{!matches.some(m => m.status !== 'completed') && <Empty icon={Calendar} title="Nothing on the calendar" />}</Panel><Panel title="Quick actions" subtitle="Get back into the game"><div className="quick-actions"><button onClick={() => show('posts')}><ImageIcon /> Share a club moment <ArrowRight /></button><button onClick={() => show('whiteboard')}><PenTool /> Open tactics board <ArrowRight /></button><button onClick={() => show('strategies')}><Target /> View game plans <ArrowRight /></button>{core && <><button onClick={() => show('scoring')}><Activity /> Score a match <ArrowRight /></button><button onClick={() => show('finances')}><Wallet /> Finance dashboard <ArrowRight /></button></>}</div></Panel></div><Panel title="Recent club updates"><div className="dash-updates">{posts.slice(0, 3).map(p => <div key={p.id}><BookOpen size={17} /><div><b>{p.title}</b><small>{date(p.created_at)}</small></div></div>)}{!posts.length && <Empty title="No club stories yet" />}</div></Panel></> }
-function MyProfile() { const { user, profile, refresh } = useAuth(); const [form, setForm] = useState({ full_name: profile.full_name || '', position: profile.position || 'Flexible', jersey_number: profile.jersey_number ?? '', bio: profile.bio || '' }), [image, setImage] = useState(null); const task = useAsync(); async function submit(e) { e.preventDefault(); await task.run(async () => { const path = image ? await upload('club-media', image, user) : profile.avatar_path; const { error } = await sb.from('profiles').update({ full_name: form.full_name.trim(), position: form.position, jersey_number: form.jersey_number === '' ? null : Number(form.jersey_number), bio: form.bio, avatar_path: path }).eq('id', user.id); if (error) throw error; await refresh() }, 'Profile updated') } return <><Heading eyebrow="// MEMBER IDENTITY" title="MY PROFILE" subtitle="Your own player record and public profile." /><div className="dash-two"><Panel title="Edit player details"><form className="form-stack" onSubmit={submit}><Input label="Display name" value={form.full_name} required onChange={e => setForm({ ...form, full_name: e.target.value })} /><Input label="Preferred position"><select value={form.position} onChange={e => setForm({ ...form, position: e.target.value })}>{['Handler', 'Cutter', 'Flexible'].map(p => <option key={p}>{p}</option>)}</select></Input><Input label="Jersey number" type="number" min="0" max="999" value={form.jersey_number} onChange={e => setForm({ ...form, jersey_number: e.target.value })} /><Input label="About you"><textarea value={form.bio} rows={4} maxLength={750} onChange={e => setForm({ ...form, bio: e.target.value })} /></Input><Input label="Profile picture (JPG / PNG / WEBP)"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => setImage(e.target.files[0])} /></Input><Flash error={task.err} success={task.ok} /><FormButton busy={task.busy}>SAVE PROFILE</FormButton></form></Panel><Panel title="Member card"><div className="profile-preview">{profile.avatar_path ? <img src={fileUrl('club-media', profile.avatar_path)} alt="Profile" /> : <UserRound size={90} />}<h2>{profile.full_name}</h2><span className="role-chip">{profile.role}</span><p>#{profile.jersey_number ?? '—'} · {profile.position}</p><Link to={`/profile/${user.id}`} className="btn btn-outline">VIEW PUBLIC RECORD <ArrowUpRight size={16} /></Link></div></Panel></div></> }
+export default function Dashboard() { const { profile, user, logout } = useAuth(), { logoSrc } = useTheme(), [search, setSearch] = useSearchParams(); const section = search.get('tab') || 'overview'; const [mobile, setMobile] = useState(false); const core = isCore(profile), admin = isAdmin(profile); const show = tab => setSearch({ tab }); const allowed = nav.filter(([id]) => !['scoring', 'finances', 'squad', 'members', 'messages'].includes(id) || core); const active = allowed.some(([id]) => id === section) ? section : 'overview'; return <section className="dashboard-shell"><aside className={'dash-side ' + (mobile ? 'dash-mobile-open' : '')}><div className="dash-side-top"><img src={logoSrc} alt="Kiducatchis" /><div className="small-eyebrow">CLUB MANAGEMENT</div></div><div className="side-nav">{allowed.map(([id, title, Icon]) => <button key={id} className={active === id ? 'active' : ''} onClick={() => { show(id); setMobile(false) }}><Icon size={18} />{title}</button>)}</div><div className="side-foot"><Link to="/"><ArrowRight size={17} /> Back to website</Link><button onClick={logout}><LogOut size={17} /> Sign out</button></div></aside><div className="dash-content"><div className="dash-topbar"><button className="mobile-dash-toggle" onClick={() => setMobile(!mobile)}><Menu size={20} /> MENU</button><span><ShieldCheck size={16} /> {profile.role.toUpperCase()} ACCESS</span><div className="topbar-right-group"><button type="button" className="topbar-pwd-btn" onClick={() => { show('profile'); setTimeout(() => { const el = document.getElementById('security-panel'); if (el) { el.scrollIntoView({ behavior: 'smooth' }); el.querySelector('input')?.focus(); } }, 100); }} title="Change password"><KeyRound size={14} /><span>Password</span></button><Link to={`/profile/${user.id}`}>{profile.avatar_path ? <img src={fileUrl('club-media', profile.avatar_path)} alt="Profile" /> : <span className="dash-letter">{profile.full_name?.charAt(0) || 'K'}</span>}<b>{profile.full_name}</b></Link></div></div><div className="dash-body">{active === 'overview' && <Overview profile={profile} show={show} />} {active === 'profile' && <MyProfile />}{active === 'posts' && <Posts />}{active === 'strategies' && <Strategies />}{active === 'whiteboard' && <Whiteboard />}{active === 'tournaments' && <TournamentAdmin core={core} />} {active === 'scoring' && core && <Scoring />}{active === 'finances' && core && <Finance />}{active === 'squad' && core && <SquadManager />}{active === 'members' && core && <Members />}{active === 'messages' && core && <Messages />}</div></div></section> }
+function Overview({ profile, show }) { const { data: members } = useData('profiles'), { data: tournaments } = useData('tournaments'), { data: matches } = useData('matches', { order: 'scheduled_at', limit: 80 }, true), { data: posts } = useData('posts', { order: 'created_at', limit: 50 }), { data: strategies } = useData('strategies', { limit: 100 }); const core = isCore(profile); return <><Heading eyebrow="// YOUR CLUB, AT A GLANCE" title={`HELLO, ${profile.full_name.split(' ')[0].toUpperCase()}.`} subtitle="Here's what is happening inside the Kiducatchis club." /><div className="dash-stats"><div><Users /><span>ACTIVE PLAYERS</span><strong>{members.filter(p => p.is_active).length}</strong></div><div><Trophy /><span>TOURNAMENTS</span><strong>{tournaments.length}</strong></div><div><Activity /><span>RECORDED MATCHES</span><strong>{matches.length}</strong></div><div><PenTool /><span>GAME PLANS</span><strong>{strategies.length}</strong></div></div><div className="dash-two"><Panel title="Next up" subtitle="Upcoming and active club matches" action={<button className="inline-button" onClick={() => show('tournaments')}>VIEW ALL <ArrowRight size={15} /></button>}>{matches.filter(m => m.status !== 'completed').sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)).slice(0, 4).map(m => <Link key={m.id} to={`/games/${m.id}`} className="dash-list-row"><div><b>Kiducatchis vs {m.opponent}</b><small>{date(m.scheduled_at)} · {m.status}</small></div><ArrowUpRight size={16} /></Link>)}{!matches.some(m => m.status !== 'completed') && <Empty icon={Calendar} title="Nothing on the calendar" />}</Panel><Panel title="Quick actions" subtitle="Get back into the game"><div className="quick-actions"><button onClick={() => show('posts')}><ImageIcon /> Share a club moment <ArrowRight /></button><button onClick={() => show('whiteboard')}><PenTool /> Open tactics board <ArrowRight /></button><button onClick={() => show('strategies')}><Target /> View game plans <ArrowRight /></button><button onClick={() => { show('profile'); setTimeout(() => { const el = document.getElementById('security-panel'); if (el) { el.scrollIntoView({ behavior: 'smooth' }); el.querySelector('input')?.focus(); } }, 100); }}><KeyRound /> Change password & security <ArrowRight /></button>{core && <><button onClick={() => show('scoring')}><Activity /> Score a match <ArrowRight /></button><button onClick={() => show('finances')}><Wallet /> Finance dashboard <ArrowRight /></button></>}</div></Panel></div><Panel title="Recent club updates"><div className="dash-updates">{posts.slice(0, 3).map(p => <div key={p.id}><BookOpen size={17} /><div><b>{p.title}</b><small>{date(p.created_at)}</small></div></div>)}{!posts.length && <Empty title="No club stories yet" />}</div></Panel></> }
+function MyProfile() {
+    const { user, profile, refresh } = useAuth();
+    const [form, setForm] = useState({
+        full_name: profile.full_name || '',
+        position: profile.position || 'Flexible',
+        jersey_number: profile.jersey_number ?? '',
+        bio: profile.bio || ''
+    }), [image, setImage] = useState(null);
+    const task = useAsync();
+
+    async function submit(e) {
+        e.preventDefault();
+        await task.run(async () => {
+            const path = image ? await upload('club-media', image, user) : profile.avatar_path;
+            const { error } = await sb.from('profiles').update({
+                full_name: form.full_name.trim(),
+                position: form.position,
+                jersey_number: form.jersey_number === '' ? null : Number(form.jersey_number),
+                bio: form.bio,
+                avatar_path: path
+            }).eq('id', user.id);
+            if (error) throw error;
+            await refresh();
+        }, 'Profile updated');
+    }
+
+    return (
+        <>
+            <Heading eyebrow="// MEMBER IDENTITY" title="MY PROFILE" subtitle="Your own player record, account security, and public profile." />
+            <div className="dash-two">
+                <Panel title="Edit player details" subtitle="Update your squad identity and public bio">
+                    <form className="form-stack" onSubmit={submit}>
+                        <Input label="Display name" value={form.full_name} required onChange={e => setForm({ ...form, full_name: e.target.value })} />
+                        <Input label="Preferred position">
+                            <select value={form.position} onChange={e => setForm({ ...form, position: e.target.value })}>
+                                {['Handler', 'Cutter', 'Flexible'].map(p => <option key={p}>{p}</option>)}
+                            </select>
+                        </Input>
+                        <Input label="Jersey number" type="number" min="0" max="999" value={form.jersey_number} onChange={e => setForm({ ...form, jersey_number: e.target.value })} />
+                        <Input label="About you">
+                            <textarea value={form.bio} rows={4} maxLength={750} onChange={e => setForm({ ...form, bio: e.target.value })} />
+                        </Input>
+                        <Input label="Profile picture (JPG / PNG / WEBP)">
+                            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => setImage(e.target.files[0])} />
+                        </Input>
+                        <Flash error={task.err} success={task.ok} />
+                        <FormButton busy={task.busy}>SAVE PROFILE</FormButton>
+                    </form>
+                </Panel>
+                <Panel title="Member card" subtitle="Public player card preview">
+                    <div className="profile-preview">
+                        {profile.avatar_path ? (
+                            <img src={fileUrl('club-media', profile.avatar_path)} alt="Profile" />
+                        ) : (
+                            <UserRound size={90} />
+                        )}
+                        <h2>{profile.full_name}</h2>
+                        <span className="role-chip">{profile.role}</span>
+                        <p>#{profile.jersey_number ?? '—'} · {profile.position}</p>
+                        <div className="profile-card-actions">
+                            <Link to={`/profile/${user.id}`} className="btn btn-outline">
+                                VIEW PUBLIC RECORD <ArrowUpRight size={16} />
+                            </Link>
+                            <button
+                                type="button"
+                                className="btn btn-outline"
+                                onClick={() => {
+                                    const el = document.getElementById('security-panel');
+                                    if (el) {
+                                        el.scrollIntoView({ behavior: 'smooth' });
+                                        el.querySelector('input')?.focus();
+                                    }
+                                }}
+                            >
+                                CHANGE PASSWORD <KeyRound size={16} />
+                            </button>
+                        </div>
+                    </div>
+                </Panel>
+            </div>
+
+            <div className="dash-two" id="security-panel">
+                <ChangePasswordCard user={user} />
+                <AccountSecurityCard user={user} profile={profile} />
+            </div>
+        </>
+    );
+}
+
+function ChangePasswordCard({ user }) {
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showCurrent, setShowCurrent] = useState(false);
+    const [showNew, setShowNew] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState('');
+    const [ok, setOk] = useState('');
+    const [resetBusy, setResetBusy] = useState(false);
+    const [resetMsg, setResetMsg] = useState('');
+
+    const hasMinLength = newPassword.length >= 8;
+    const matchesConfirm = Boolean(newPassword && newPassword === confirmPassword);
+
+    async function sendResetLink() {
+        if (!sb || !user?.email) return;
+        setResetBusy(true);
+        setResetMsg('');
+        setErr('');
+        try {
+            const { error } = await sb.auth.resetPasswordForEmail(user.email, {
+                redirectTo: `${window.location.origin}/activate`
+            });
+            if (error) throw error;
+            setResetMsg(`Password reset instructions sent to ${user.email}. Check your email inbox to proceed.`);
+        } catch (e) {
+            setErr(errorText(e));
+        } finally {
+            setResetBusy(false);
+        }
+    }
+
+    async function submit(e) {
+        e.preventDefault();
+        setErr('');
+        setOk('');
+        setResetMsg('');
+
+        if (!sb) {
+            setErr('Supabase is not configured.');
+            return;
+        }
+
+        if (!newPassword) {
+            setErr('Please enter a new password.');
+            return;
+        }
+
+        if (newPassword.length < 8) {
+            setErr('New password must contain at least 8 characters.');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            setErr('New passwords do not match.');
+            return;
+        }
+
+        if (currentPassword && currentPassword === newPassword) {
+            setErr('New password must be different from current password.');
+            return;
+        }
+
+        setBusy(true);
+        try {
+            // Verify current password first if provided
+            if (currentPassword && user?.email) {
+                const { error: signInErr } = await sb.auth.signInWithPassword({
+                    email: user.email,
+                    password: currentPassword
+                });
+                if (signInErr) {
+                    throw new Error('Current password is incorrect. Please check and try again.');
+                }
+            }
+
+            // Update user password in Supabase Auth
+            const { error: updateErr } = await sb.auth.updateUser({
+                password: newPassword
+            });
+            if (updateErr) throw updateErr;
+
+            setOk('Your password has been changed successfully.');
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+        } catch (error) {
+            setErr(errorText(error));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <Panel title="Change password" subtitle="Update your account login password">
+            <form className="form-stack" onSubmit={submit}>
+                <label className="field">
+                    Current password
+                    <div className="password-input-wrap">
+                        <input
+                            type={showCurrent ? 'text' : 'password'}
+                            value={currentPassword}
+                            onChange={e => setCurrentPassword(e.target.value)}
+                            required
+                            autoComplete="current-password"
+                            placeholder="Enter current password"
+                        />
+                        <button
+                            type="button"
+                            className="password-toggle-btn"
+                            onClick={() => setShowCurrent(!showCurrent)}
+                            aria-label={showCurrent ? 'Hide password' : 'Show password'}
+                            title={showCurrent ? 'Hide password' : 'Show password'}
+                        >
+                            {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    </div>
+                </label>
+
+                <button
+                    type="button"
+                    className="forgot-pwd-link"
+                    onClick={sendResetLink}
+                    disabled={resetBusy || !user?.email}
+                >
+                    {resetBusy ? 'Sending link...' : 'Forgot current password? Send reset link to my email'}
+                </button>
+
+                <label className="field">
+                    New password
+                    <div className="password-input-wrap">
+                        <input
+                            type={showNew ? 'text' : 'password'}
+                            value={newPassword}
+                            onChange={e => setNewPassword(e.target.value)}
+                            required
+                            minLength={8}
+                            autoComplete="new-password"
+                            placeholder="At least 8 characters"
+                        />
+                        <button
+                            type="button"
+                            className="password-toggle-btn"
+                            onClick={() => setShowNew(!showNew)}
+                            aria-label={showNew ? 'Hide password' : 'Show password'}
+                            title={showNew ? 'Hide password' : 'Show password'}
+                        >
+                            {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    </div>
+                </label>
+
+                <label className="field">
+                    Confirm new password
+                    <div className="password-input-wrap">
+                        <input
+                            type={showConfirm ? 'text' : 'password'}
+                            value={confirmPassword}
+                            onChange={e => setConfirmPassword(e.target.value)}
+                            required
+                            minLength={8}
+                            autoComplete="new-password"
+                            placeholder="Repeat new password"
+                        />
+                        <button
+                            type="button"
+                            className="password-toggle-btn"
+                            onClick={() => setShowConfirm(!showConfirm)}
+                            aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                            title={showConfirm ? 'Hide password' : 'Show password'}
+                        >
+                            {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    </div>
+                </label>
+
+                <div className="password-hints">
+                    <span className={`password-hint ${hasMinLength ? 'valid' : ''}`}>
+                        {hasMinLength ? <CheckCircle2 size={13} /> : <Disc3 size={13} />}
+                        At least 8 characters
+                    </span>
+                    <span className={`password-hint ${matchesConfirm ? 'valid' : ''}`}>
+                        {matchesConfirm ? <CheckCircle2 size={13} /> : <Disc3 size={13} />}
+                        Passwords match
+                    </span>
+                </div>
+
+                <Flash error={err} success={ok || resetMsg} />
+
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                    {busy ? 'UPDATING PASSWORD…' : 'UPDATE PASSWORD'} <ArrowUpRight size={16} />
+                </button>
+            </form>
+        </Panel>
+    );
+}
+
+function AccountSecurityCard({ user, profile }) {
+    const [sending, setSending] = useState(false);
+    const [msg, setMsg] = useState('');
+    const [err, setErr] = useState('');
+
+    async function handleEmailReset() {
+        if (!sb || !user?.email) return;
+        setSending(true);
+        setErr('');
+        setMsg('');
+        try {
+            const { error } = await sb.auth.resetPasswordForEmail(user.email, {
+                redirectTo: `${window.location.origin}/activate`
+            });
+            if (error) throw error;
+            setMsg(`Password reset instructions sent to ${user.email}. Check your inbox.`);
+        } catch (e) {
+            setErr(errorText(e));
+        } finally {
+            setSending(false);
+        }
+    }
+
+    return (
+        <Panel title="Account & security" subtitle="Your credentials and login details">
+            <div className="security-info-grid">
+                <div className="security-info-row">
+                    <label>Sign-in email</label>
+                    <span>{user?.email || 'No email attached'}</span>
+                </div>
+
+                <div className="security-info-row">
+                    <label>Account role</label>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <ShieldCheck size={15} color="var(--violet)" />
+                        {profile?.role ? profile.role.toUpperCase() : 'MEMBER'}
+                    </span>
+                </div>
+
+                <div className="security-info-row">
+                    <label>Account status</label>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#4ade80' }}>
+                        <CheckCircle2 size={15} />
+                        Active club member
+                    </span>
+                </div>
+
+                <div className="security-info-row">
+                    <label>Member ID</label>
+                    <code>{user?.id || profile?.id || '—'}</code>
+                </div>
+
+                <div className="security-tip-box">
+                    <strong>Password recommendations</strong>
+                    Use at least 8 characters. Kiducatchis accounts have club and team management capabilities. Never share your password with anyone.
+                </div>
+
+                <Flash error={err} success={msg} />
+
+                <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={handleEmailReset}
+                    disabled={sending || !user?.email}
+                    style={{ marginTop: '4px' }}
+                >
+                    {sending ? 'SENDING RESET EMAIL…' : 'SEND RESET LINK TO EMAIL'} <Mail size={16} />
+                </button>
+            </div>
+        </Panel>
+    );
+}
 function Posts() {
     const { user, profile } = useAuth(), admin = isAdmin(profile), { data: posts, reload } = useData('posts', { order: 'created_at', limit: 200 });
     const { confirm } = useDialog();
