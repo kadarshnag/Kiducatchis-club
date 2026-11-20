@@ -6,6 +6,6 @@ export default defineConfig({
 
     preview: {
         host: '0.0.0.0',
-        allowedHosts: ['kiducatchis-club.onrender.com'],
+        allowedHosts: ['kiducatchis-club.onrender.com', 'kiducatchis-club.vercel.app', 'localhost'],
     },
 })
