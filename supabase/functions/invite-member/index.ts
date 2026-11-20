@@ -15,8 +15,8 @@ const json = (data: unknown, status = 200, origin = '*') => new Response(JSON.st
 Deno.serve(async (req: Request) => {
   const requestOrigin = req.headers.get('origin') || '';
   const configuredAppUrl = (Deno.env.get('APP_URL') || '').replace(/\/$/, '');
-  const appUrl = configuredAppUrl || requestOrigin || 'http://localhost:5173';
-  const origin = requestOrigin || configuredAppUrl || '*';
+  const appUrl = requestOrigin || configuredAppUrl || 'https://kiducatchis-club.vercel.app';
+  const origin = requestOrigin || '*';
 
   if (req.method === 'OPTIONS') return json({}, 200, origin);
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, origin);
